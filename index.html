@@ -145,14 +145,11 @@
   <div class="authcard">
     <div class="brand"><div class="dot"></div><div><h1>vega closet</h1><span class="tag">your feed</span></div></div>
     <div id="authForm">
-      <p class="lead">sign in to see today's picks. we'll email you a magic link.</p>
+      <p class="lead">sign in to see today's picks.</p>
       <input type="email" id="authEmail" placeholder="you@email.com" value="vegadesign.us@gmail.com" autocomplete="email" />
-      <button class="authbtn" id="authSend" type="button">send magic link</button>
+      <input type="password" id="authPass" placeholder="password" autocomplete="current-password" />
+      <button class="authbtn" id="authSend" type="button">sign in</button>
       <p class="autherr" id="authErr" style="display:none;"></p>
-    </div>
-    <div id="authSent" style="display:none;">
-      <p class="authmsg">check your email — tap the link to sign in.</p>
-      <p class="lead">sent to <b id="authSentTo"></b>. you can close this tab; the link opens you right back here signed in.</p>
     </div>
   </div>
 </div>
@@ -193,32 +190,29 @@
   const money = n => "$" + Number(n).toLocaleString();
   const platLabel = { grailed:"grailed", therealreal:"the realreal", ssense:"ssense" };
 
-  // ================= AUTH GATE (magic link) =================
+  // ================= AUTH GATE (email + password) =================
   const authEl   = document.getElementById("auth");
   const appEl    = document.getElementById("app");
   const authForm = document.getElementById("authForm");
-  const authSent = document.getElementById("authSent");
 
   function showAuth(){ appEl.classList.remove("show"); authEl.classList.add("show"); }
   function showApp(){ authEl.classList.remove("show"); appEl.classList.add("show"); }
 
-  document.getElementById("authSend").addEventListener("click", async () => {
+  async function doSignIn(){
     const email = (document.getElementById("authEmail").value || "").trim();
+    const pass  = document.getElementById("authPass").value || "";
     const errEl = document.getElementById("authErr");
     const btn = document.getElementById("authSend");
     errEl.style.display = "none";
-    if (!email) { errEl.textContent = "enter your email first."; errEl.style.display = "block"; return; }
-    btn.disabled = true; btn.textContent = "sending…";
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.href.split('#')[0] }
-    });
-    btn.disabled = false; btn.textContent = "send magic link";
+    if (!email || !pass) { errEl.textContent = "enter your email and password."; errEl.style.display = "block"; return; }
+    btn.disabled = true; btn.textContent = "signing in…";
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    btn.disabled = false; btn.textContent = "sign in";
     if (error) { errEl.textContent = error.message.toLowerCase(); errEl.style.display = "block"; return; }
-    document.getElementById("authSentTo").textContent = email;
-    authForm.style.display = "none";
-    authSent.style.display = "block";
-  });
+    // onAuthStateChange renders the feed from here.
+  }
+  document.getElementById("authSend").addEventListener("click", doSignIn);
+  document.getElementById("authPass").addEventListener("keydown", e => { if (e.key === "Enter") doSignIn(); });
 
   document.getElementById("signOut").addEventListener("click", async () => {
     await sb.auth.signOut();
@@ -234,9 +228,7 @@
       USER = null;
       FEED_RENDERED = false;
       if (sigChannel) { sb.removeChannel(sigChannel); sigChannel = null; }
-      // reset auth screen to its initial (form) state
       authForm.style.display = "block";
-      authSent.style.display = "none";
       showAuth();
     }
   });
