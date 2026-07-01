@@ -196,7 +196,7 @@ def scrape_ssense(brands, loved_raw, per_brand=6):
     LIST = {"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{
         "name":{"type":"string"},"price":{"type":"number"},"url":{"type":"string"},"image":{"type":"string"}}}}}}
     SIZE = {"type":"object","properties":{"name":{"type":"string"},
-        "sizesAvailable":{"type":"array","items":{"type":"string"}}}}
+        "sizesAvailable":{"type":"array","items":{"type":"string"}},"image":{"type":"string"}}}
     out = []
     for b in brands[:8]:                                          # light pass to control credits
         slug = re.sub(r"[^a-z0-9]+","-",norm(b)).strip("-")
@@ -207,13 +207,15 @@ def scrape_ssense(brands, loved_raw, per_brand=6):
             if cat not in CATS: continue
             purl = (p.get("url") or "").split("?")[0]
             if not purl: continue
-            szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000) or {}       # sizes are on the product page
+            szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000) or {}       # sizes + REAL image live on the product page
             sizes = " ".join(szdata.get("sizesAvailable") or [])
             if not in_size(cat, sizes): continue
+            img = (szdata.get("image") or p.get("image") or "").split("?")[0]             # listing src is a lazy placeholder; prefer product-page image
+            if not img.startswith("http"): continue                                       # never store a data:/placeholder image
             m = re.search(r"(\d+)$", purl)
             out.append({"url":purl,"id":(m.group(1) if m else purl),"platform":"ssense","brand":b,
                         "title":title,"category":cat,"price":p.get("price"),"size":sizes,
-                        "condition":"new","image":(p.get("image") or "").split("?")[0]})
+                        "condition":"new","image":img})
     return out
 
 # ---------- rank a new piece by his EYE (Claude vision vs the stored taste rubric) ----------
@@ -259,7 +261,7 @@ def filter_new(found, known, loved):
     rows = []; newurls = set()
     for it in found:
         url = it.get("url")
-        if not url or not it.get("image") or not it.get("brand"): continue
+        if not url or not it.get("brand") or not str(it.get("image","")).startswith("http"): continue  # reject data:/placeholder images
         if url in known or url in newurls: continue                # only genuinely new
         cat = it["category"]
         if cat not in CATS: continue
