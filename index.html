@@ -387,13 +387,14 @@
     function actOf(url){ return SIG[url] || ""; }
     function sigTag(url){ const a=actOf(url); return a==="liked" ? "like" : a==="passed" ? "pass" : ""; }
 
-    // Seed SIG from the payload's own flags. They already reflect the signals table at build
-    // time AND match exactly what each card renders, so there is no 1000-row query cap and no
-    // drift between the counter and the cards. Realtime (below) reconciles live cross-device taps.
-    (F.sections||[]).forEach(s=>s.items.forEach(it=>{
-      if (it.isLiked)         SIG[it.url] = "liked";
-      else if (it.isArchived) SIG[it.url] = "passed";
-    }));
+    // Seed SIG from the LIVE signals table (the source of truth), paginated PAST the 1000-row cap,
+    // so a refresh always reflects your latest taps even when the feed snapshot is older than them.
+    for (let from=0; from<40000; from+=1000){
+      const { data: rows, error } = await sb.from('signals').select('url,action').eq('user_id', userId).range(from, from+999);
+      if (error){ console.error(error); break; }
+      (rows||[]).forEach(r=>{ if(r.url) SIG[r.url]=r.action; });
+      if (!rows || rows.length < 1000) break;
+    }
 
     function applyStates(){
       document.querySelectorAll(".card").forEach(c=>{
@@ -401,6 +402,7 @@
         const a = actOf(url);
         if (a==="liked")      { c.dataset.liked="1"; c.dataset.archived="0"; }   // honor prior taps on load
         else if (a==="passed"){ c.dataset.archived="1"; c.dataset.liked="0"; }
+        else                  { c.dataset.liked="0";   c.dataset.archived="0"; } // live tally says untouched -> unreviewed
         c.dataset.sig = sigTag(url);
       });
     }
