@@ -169,6 +169,7 @@
   <div class="sigbar"><div class="sigbar-in">
     <span class="cnt2" id="sigcnt"></span>
     <span class="sp"></span>
+    <button class="sigbtn" id="scanNow" type="button">scan now</button>
     <button class="sigbtn" id="hidePass" type="button">hide passed</button>
     <button class="signout" id="signOut" type="button">sign out</button>
     <span class="sigok" id="sigok"></span>
@@ -449,6 +450,25 @@
     });
 
     document.getElementById("hidePass").onclick=function(){ document.body.classList.toggle("hidepassed"); this.classList.toggle("on"); };
+
+    // "scan now": trigger the cloud conductor (Supabase RPC -> GitHub Actions), then reload when the feed rebuilds.
+    document.getElementById("scanNow").onclick = async function(){
+      const btn=this, ok=document.getElementById("sigok");
+      btn.disabled=true; ok.textContent="scanning your brands… (~2 min)";
+      let before=null;
+      try { const {data:f0}=await sb.from('feeds').select('built_at').single(); before=f0&&f0.built_at; } catch(e){}
+      const { error } = await sb.rpc('run_conductor');
+      if (error){ ok.textContent="couldn't start scan"; btn.disabled=false; return; }
+      let tries=0;
+      const iv=setInterval(async ()=>{
+        tries++;
+        try {
+          const {data:f}=await sb.from('feeds').select('built_at').single();
+          if (f && f.built_at && f.built_at!==before){ clearInterval(iv); ok.textContent="fresh picks in — reloading"; setTimeout(()=>location.reload(),1200); return; }
+        } catch(e){}
+        if (tries>=25){ clearInterval(iv); ok.textContent="still scanning — pull to refresh shortly"; btn.disabled=false; }
+      }, 12000);
+    };
 
     applyStates(); updateSigBar();
     if (cards().filter(c=>c.dataset.archived==="0"&&c.dataset.liked==="0").length===0) VIEW.status="all";  // feed empty -> show all

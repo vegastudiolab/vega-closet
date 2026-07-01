@@ -5,7 +5,7 @@
 # and folds lasting patterns back into their taste. Config from env (Actions) or .env.
 import os, sys, re, json, urllib.request, urllib.error
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timezone
 
 def _loadenv():
     if os.environ.get("SUPABASE_URL"): return
@@ -20,6 +20,7 @@ def _loadenv():
 _loadenv()
 URL = os.environ["SUPABASE_URL"].rstrip("/"); SECRET = os.environ["SUPABASE_SECRET_KEY"]
 TODAY = date.today().isoformat()
+NOW = datetime.now(timezone.utc).isoformat()
 
 def api(method, path, body=None, extra=None):
     data = json.dumps(body).encode() if body is not None else None
@@ -122,7 +123,7 @@ def build_for_user(uid, taste, catalog):
     feed = {"date":TODAY,"runId":TODAY+"-cloud","scanned":len(catalog),
             "platforms":{"grailed":plat.get("grailed",0),"therealreal":plat.get("therealreal",0),"ssense":plat.get("ssense",0)},
             "note":note,"sections":secout}
-    api("POST", "/rest/v1/feeds?on_conflict=user_id", [{"user_id":uid,"payload":feed}], {"Prefer":"resolution=merge-duplicates,return=minimal"})
+    api("POST", "/rest/v1/feeds?on_conflict=user_id", [{"user_id":uid,"payload":feed,"built_at":NOW}], {"Prefer":"resolution=merge-duplicates,return=minimal"})
 
     # taste write-back: promote brands liked >=3x (canonicalize), refresh tallies, never cool a brand
     loved = taste.get("brands", {}).get("loved", []); lset = {norm(x) for x in loved}; promoted = []
