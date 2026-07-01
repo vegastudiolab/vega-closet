@@ -151,20 +151,23 @@ def scrape_trr(loved, loved_raw):
     out = []
     for path in urls:
         items = apify_run("piotrv1001~the-realreal-listings-scraper",
-                          {"startUrls":[{"url":"https://www.therealreal.com"+path}],"maxItems":600,
+                          {"startUrls":[{"url":"https://www.therealreal.com"+path}],"maxItems":300,
                            "proxyConfiguration":{"useApifyProxy":True,"apifyProxyGroups":["RESIDENTIAL"],"apifyProxyCountryCode":"US"}},
                           memory=2048)
         if items is None: break
         for it in items or []:
+            if norm(it.get("gender")) not in ("men", "male", "mens"): continue   # drop women's leakage
             brand = it.get("designer") or it.get("brand") or ""
             canon = brand_matches(brand, loved_raw)
             if not canon: continue                                # TRR: keep only loved brands
-            title = it.get("title") or it.get("name") or ""
+            title = it.get("name") or it.get("title") or ""
             cat = infer_cat(title)
             if cat not in CATS: continue
-            size = ""
+            sizeparts = []                                        # size lives in typed attributes, not a 'size' field
             for a in (it.get("attributes") or []):
-                if "size" in norm(a.get("name")): size = a.get("value") or size
+                if a.get("type") in ("CLOTHING_SIZE", "SHOE_SIZE", "MENS_WAIST"):
+                    sizeparts += [str(v) for v in (a.get("values") or [])]
+            size = " ".join(sizeparts)
             price = None
             try: price = it.get("price",{}).get("final",{}).get("usdCents",0)/100 or None
             except Exception: pass
@@ -178,28 +181,33 @@ def scrape_trr(loved, loved_raw):
 def firecrawl_scrape(url, schema, proxy="auto", wait=9000):
     st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",
                  {"url":url,"formats":[{"type":"json","schema":schema}],"waitFor":wait,"proxy":proxy},
-                 {"Authorization":"Bearer "+FIRE}, timeout=120)
+                 {"Authorization":"Bearer "+FIRE}, timeout=180)
     if st != 200 or not isinstance(r, dict): return None
     return (r.get("data") or {}).get("json")
 
 def scrape_ssense(brands, loved_raw, per_brand=6):
+    # SSENSE needs the stealth proxy + a proper JSON Schema, or the extraction comes back empty.
+    LIST = {"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{
+        "name":{"type":"string"},"price":{"type":"number"},"url":{"type":"string"},"image":{"type":"string"}}}}}}
+    SIZE = {"type":"object","properties":{"name":{"type":"string"},
+        "sizesAvailable":{"type":"array","items":{"type":"string"}}}}
     out = []
     for b in brands[:8]:                                          # light pass to control credits
         slug = re.sub(r"[^a-z0-9]+","-",norm(b)).strip("-")
-        data = firecrawl_scrape(f"https://www.ssense.com/en-us/men/designers/{slug}",
-                                {"products":[{"name":"","price":0,"imageUrl":"","productUrl":""}]}, proxy="auto")
+        data = firecrawl_scrape(f"https://www.ssense.com/en-us/men/designers/{slug}", LIST, proxy="stealth", wait=12000)
         prods = (data or {}).get("products") or []
         for p in prods[:per_brand]:
             title = p.get("name",""); cat = infer_cat(title)
             if cat not in CATS: continue
-            purl = (p.get("productUrl") or "").split("?")[0]
+            purl = (p.get("url") or "").split("?")[0]
             if not purl: continue
-            szdata = firecrawl_scrape(purl, {"name":"","sizesAvailable":[""]}, proxy="auto", wait=6000) or {}
+            szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000) or {}       # sizes are on the product page
             sizes = " ".join(szdata.get("sizesAvailable") or [])
             if not in_size(cat, sizes): continue
-            out.append({"url":purl,"id":re.sub(r".*?(\d+)$","\\1",purl),"platform":"ssense","brand":b,
+            m = re.search(r"(\d+)$", purl)
+            out.append({"url":purl,"id":(m.group(1) if m else purl),"platform":"ssense","brand":b,
                         "title":title,"category":cat,"price":p.get("price"),"size":sizes,
-                        "condition":"new","image":(p.get("imageUrl") or "").split("?")[0]})
+                        "condition":"new","image":(p.get("image") or "").split("?")[0]})
     return out
 
 # ---------- main ----------
