@@ -128,20 +128,21 @@ def scrape_grailed(brands, loved):
     for b in brands:
         items = apify_run("crawlergang~grailed-scraper", {"searchQuery": b, "maxItems": MAX_PER_BRAND})
         if items is None: break                                   # hit the cap
+        kept0 = len(out)
         for it in items or []:
             title = it.get("title", "") or ""
             gcat = norm(it.get("category"))
             cat = {"outerwear":"outerwear","tops":"tops","bottoms":"bottoms","footwear":"footwear","tailoring":"outerwear"}.get(gcat) or infer_cat(title)
             if cat not in CATS: continue
-            size = it.get("size", "")
-            cond = "new" if it.get("is_new") else ("gently used" if it.get("is_gently_used") else None)
-            if not cond: continue
+            cond = {"is_new":"new","is_gently_used":"gently used"}.get(norm(it.get("condition")))
+            if not cond: continue                                  # drop is_used / is_worn (condition is a string)
             url = (it.get("sourceUrl") or "").split("?")[0]
             img = (it.get("photoUrls") or [None])[0]
             brand = (it.get("designerNames") or [b])[0]
             out.append({"url":url,"id":str(it.get("listingId") or ""),"platform":"grailed","brand":brand,
-                        "title":title,"category":cat,"price":it.get("price"),"size":size,"condition":cond,
+                        "title":title,"category":cat,"price":it.get("price"),"size":it.get("size",""),"condition":cond,
                         "image":(img or "").split("?")[0]})
+        print(f"  grailed '{b}': {len(items or [])} raw -> {len(out)-kept0} kept")
     return out
 
 def scrape_trr(loved, loved_raw):
@@ -219,11 +220,15 @@ def main():
     loved = set(norm(b) for b in loved_raw)
     if not loved_raw:
         print("no loved brands found — aborting"); return
-    # rotate a slice of brands per run so daily cost stays bounded
-    n = min(BRANDS_PER_RUN, len(loved_raw))
-    off = (date.today().toordinal() * n) % len(loved_raw)
-    todays = [loved_raw[(off + i) % len(loved_raw)] for i in range(n)]
-    print(f"loved brands: {len(loved_raw)} | this run scrapes {n}: {todays[:6]}{'...' if n>6 else ''}")
+    # brands: explicit override (on-demand / testing) OR a rotating slice to bound daily cost
+    override = os.environ.get("BRANDS", "").strip()
+    if override:
+        todays = [b.strip() for b in override.split(",") if b.strip()]
+    else:
+        n = min(BRANDS_PER_RUN, len(loved_raw))
+        off = (date.today().toordinal() * n) % len(loved_raw)
+        todays = [loved_raw[(off + i) % len(loved_raw)] for i in range(n)]
+    print(f"loved brands: {len(loved_raw)} | this run scrapes {len(todays)}: {todays[:6]}{'...' if len(todays)>6 else ''}")
     print(f"sources: {SOURCES} | max/brand: {MAX_PER_BRAND}")
 
     existing = set(r["url"] for r in fetch_all("catalog", "url"))

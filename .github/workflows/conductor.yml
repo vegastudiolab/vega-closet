@@ -16,6 +16,9 @@ on:
       brands_per_run:
         description: 'how many loved brands to scrape this run'
         default: '24'
+      brands:
+        description: 'specific brands (comma list) to scrape instead of the rotation'
+        default: ''
 
 # never let two runs stomp each other
 concurrency:
@@ -41,6 +44,7 @@ jobs:
           SOURCES:        ${{ github.event.inputs.sources || 'grailed' }}
           MAX_PER_BRAND:  ${{ github.event.inputs.max_per_brand || '40' }}
           BRANDS_PER_RUN: ${{ github.event.inputs.brands_per_run || '24' }}
+          BRANDS:         ${{ github.event.inputs.brands || '' }}
         run: python pipeline/conductor.py
 
       - name: rebuild every user's feed
