@@ -1,0 +1,2 @@
+# The conductor and rebuild use only the Python standard library (urllib, json).
+# No third-party packages needed. This file is here for clarity / future deps.

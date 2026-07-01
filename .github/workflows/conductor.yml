@@ -1,0 +1,50 @@
+name: vega-closet conductor
+
+on:
+  # daily run (UTC; GitHub may fire up to a few hours late, which is fine for a feed)
+  schedule:
+    - cron: '0 13 * * *'
+  # on-demand: run from the Actions tab, or via API (the in-app "run now" button)
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: 'sources to scrape: grailed,therealreal,ssense'
+        default: 'grailed'
+      max_per_brand:
+        description: 'max items per brand'
+        default: '40'
+      brands_per_run:
+        description: 'how many loved brands to scrape this run'
+        default: '24'
+
+# never let two runs stomp each other
+concurrency:
+  group: vega-conductor
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: scrape + upsert catalog
+        env:
+          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          APIFY_TOKEN:         ${{ secrets.APIFY_TOKEN }}
+          FIRECRAWL_KEY:       ${{ secrets.FIRECRAWL_KEY }}
+          SOURCES:        ${{ github.event.inputs.sources || 'grailed' }}
+          MAX_PER_BRAND:  ${{ github.event.inputs.max_per_brand || '40' }}
+          BRANDS_PER_RUN: ${{ github.event.inputs.brands_per_run || '24' }}
+        run: python pipeline/conductor.py
+
+      - name: rebuild every user's feed
+        env:
+          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python pipeline/build_feed_cloud.py
