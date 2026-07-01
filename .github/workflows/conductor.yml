@@ -16,6 +16,9 @@ on:
       brands_per_run:
         description: 'how many loved brands to scrape this run'
         default: '24'
+      min_new:
+        description: 'keep pulling fresh grailed brands until at least this many new (0 = off)'
+        default: '0'
       brands:
         description: 'specific brands (comma list) to scrape instead of the rotation'
         default: ''
@@ -45,6 +48,7 @@ jobs:
           SOURCES:        ${{ github.event.inputs.sources || 'grailed,therealreal,ssense' }}
           MAX_PER_BRAND:  ${{ github.event.inputs.max_per_brand || '40' }}
           BRANDS_PER_RUN: ${{ github.event.inputs.brands_per_run || '24' }}
+          MIN_NEW:        ${{ github.event.inputs.min_new || '0' }}
           BRANDS:         ${{ github.event.inputs.brands || '' }}
         run: python pipeline/conductor.py
 

@@ -371,10 +371,11 @@
       "vega closet · prices and availability change, tap through to confirm on the platform · love and pass train your next run.";
 
     // ---- like / pass training signals -> SUPABASE (replaces localStorage + export) ----
-    // Index items by url (Supabase keys on user_id,url) and keep a by-id map for the tap handler.
-    const ITEMS = {};                    // id -> item
-    const URL_OF = {};                   // id -> url
-    (F.sections||[]).forEach(s=>s.items.forEach(it=>{ ITEMS[it.id]=it; URL_OF[it.id]=it.url; }));
+    // Index items by URL. url is the ONLY cross-source-unique key — grailed / the realreal /
+    // ssense each mint their own numeric ids, so an id-keyed map collides and a tap can hit the
+    // WRONG piece (pass never sticks, item reappears, double counts). Always key on url.
+    const ITEM_OF = {};                  // url -> item
+    (F.sections||[]).forEach(s=>s.items.forEach(it=>{ ITEM_OF[it.url]=it; }));
 
     // In-memory signal state keyed by url: { url: 'liked' | 'passed' }
     const SIG = {};                      // url -> action
@@ -406,8 +407,9 @@
     // Tap handler: optimistic UI first (identical feel), then persist to Supabase.
     document.getElementById("sections").addEventListener("click", async e=>{
       const btn=e.target.closest(".act"); if(!btn) return;
-      const cardEl=btn.closest(".card"); const id=cardEl.dataset.id; const it=ITEMS[id]; if(!it) return;
-      const url = it.url;
+      const cardEl=btn.closest(".card");
+      const url = decodeURIComponent(cardEl.dataset.url||"");  if(!url) return;   // the card's OWN url (ids collide across sources)
+      const it = ITEM_OF[url] || {brand:"", category:cardEl.dataset.cat||"", price:(+cardEl.dataset.price)||null, reasons:[]};
 
       const want = btn.dataset.act==="like" ? "liked" : "passed";
       const prev = SIG[url];
@@ -454,7 +456,7 @@
     // "scan now": trigger the cloud conductor (Supabase RPC -> GitHub Actions), then reload when the feed rebuilds.
     document.getElementById("scanNow").onclick = async function(){
       const btn=this, ok=document.getElementById("sigok");
-      btn.disabled=true; ok.textContent="scanning your brands… (~2 min)";
+      btn.disabled=true; ok.textContent="scanning your brands for fresh picks… (~5 min)";
       let before=null;
       try { const {data:f0}=await sb.from('feeds').select('built_at').single(); before=f0&&f0.built_at; } catch(e){}
       const { error } = await sb.rpc('run_conductor');
@@ -466,8 +468,8 @@
           const {data:f}=await sb.from('feeds').select('built_at').single();
           if (f && f.built_at && f.built_at!==before){ clearInterval(iv); ok.textContent="fresh picks in — reloading"; setTimeout(()=>location.reload(),1200); return; }
         } catch(e){}
-        if (tries>=25){ clearInterval(iv); ok.textContent="still scanning — pull to refresh shortly"; btn.disabled=false; }
-      }, 12000);
+        if (tries>=48){ clearInterval(iv); ok.textContent="still scanning — pull to refresh shortly"; btn.disabled=false; }
+      }, 15000);
     };
 
     applyStates(); updateSigBar();

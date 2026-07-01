@@ -8,7 +8,7 @@
 #   env: SUPABASE_URL, SUPABASE_SECRET_KEY, APIFY_TOKEN, FIRECRAWL_KEY
 #        SOURCES (default "grailed,therealreal,ssense"), MAX_PER_BRAND (40),
 #        BRANDS_PER_RUN (24)  -> rotates through the loved list to keep runs cheap
-import os, sys, json, time, re, urllib.request, urllib.error
+import os, sys, json, time, re, random, urllib.request, urllib.error
 from datetime import date
 
 # ---------- config (env, with local .env fallback) ----------
@@ -31,6 +31,7 @@ ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SOURCES  = [s.strip() for s in os.environ.get("SOURCES", "grailed,therealreal,ssense").split(",") if s.strip()]
 MAX_PER_BRAND = int(os.environ.get("MAX_PER_BRAND", "40"))
 BRANDS_PER_RUN= int(os.environ.get("BRANDS_PER_RUN", "24"))
+MIN_NEW = int(os.environ.get("MIN_NEW", "0"))   # keep pulling fresh grailed brands until at least this many new (0 = off)
 TODAY = date.today().isoformat()
 
 def http(method, url, body=None, headers=None, timeout=120):
@@ -125,12 +126,12 @@ def apify_run(actor, inp, memory=1024, wait=280):
     return items if isinstance(items, list) else []
 
 def scrape_grailed(brands, loved):
-    out = []
-    for b in brands:
+    # brands scraped concurrently (memory 1024 each, ~5 at a time stays well under the account cap)
+    from concurrent.futures import ThreadPoolExecutor
+    def one(b):
         items = apify_run("crawlergang~grailed-scraper", {"searchQuery": b, "maxItems": MAX_PER_BRAND})
-        if items is None: break                                   # hit the cap
-        kept0 = len(out)
-        for it in items or []:
+        got = []
+        for it in (items or []):
             title = it.get("title", "") or ""
             gcat = norm(it.get("category"))
             cat = {"outerwear":"outerwear","tops":"tops","bottoms":"bottoms","footwear":"footwear","tailoring":"outerwear"}.get(gcat) or infer_cat(title)
@@ -140,10 +141,14 @@ def scrape_grailed(brands, loved):
             url = (it.get("sourceUrl") or "").split("?")[0]
             img = (it.get("photoUrls") or [None])[0]
             brand = (it.get("designerNames") or [b])[0]
-            out.append({"url":url,"id":str(it.get("listingId") or ""),"platform":"grailed","brand":brand,
+            got.append({"url":url,"id":str(it.get("listingId") or ""),"platform":"grailed","brand":brand,
                         "title":title,"category":cat,"price":it.get("price"),"size":it.get("size",""),"condition":cond,
                         "image":(img or "").split("?")[0]})
-        print(f"  grailed '{b}': {len(items or [])} raw -> {len(out)-kept0} kept")
+        print(f"  grailed '{b}': {len(items or [])} raw -> {len(got)} kept")
+        return got
+    out = []
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for got in ex.map(one, brands): out += got
     return out
 
 def scrape_trr(loved, loved_raw):
@@ -250,6 +255,23 @@ def fetch_all(table, select):
         start += step
     return rows
 
+def filter_new(found, known, loved):
+    rows = []; newurls = set()
+    for it in found:
+        url = it.get("url")
+        if not url or not it.get("image") or not it.get("brand"): continue
+        if url in known or url in newurls: continue                # only genuinely new
+        cat = it["category"]
+        if cat not in CATS: continue
+        if not in_size(cat, it.get("size")): continue
+        if cat == "bottoms" and re.search(r"\b3[45]\b", norm(it.get("size"))): continue
+        if is_blazer(it.get("title")): continue
+        newurls.add(url)
+        tags = tags_from(it["title"])
+        rows.append({**it, "reasons": tags, "base_score": base_score(it["brand"], tags, loved),
+                     "sz": size_bucket(it), "first_seen": TODAY, "last_seen": TODAY})
+    return rows, newurls
+
 def main():
     # loved brands from Charles's taste row (first taste row = him for now)
     st, tastes = sb("GET", "/rest/v1/taste?select=payload&limit=1")
@@ -265,8 +287,7 @@ def main():
         todays = [b.strip() for b in override.split(",") if b.strip()]
     else:
         n = min(BRANDS_PER_RUN, len(loved_raw))
-        off = (date.today().toordinal() * n) % len(loved_raw)
-        todays = [loved_raw[(off + i) % len(loved_raw)] for i in range(n)]
+        todays = random.sample(loved_raw, n)          # random slice each run so repeat scans hit fresh brands
     print(f"loved brands: {len(loved_raw)} | this run scrapes {len(todays)}: {todays[:6]}{'...' if len(todays)>6 else ''}")
     print(f"sources: {SOURCES} | max/brand: {MAX_PER_BRAND}")
 
@@ -279,20 +300,17 @@ def main():
     if "ssense" in SOURCES and FIRE:      found += scrape_ssense(todays, loved_raw)
     print(f"scraped {len(found)} raw items")
 
-    rows = []; seen = set()
-    for it in found:
-        url = it.get("url")
-        if not url or not it.get("image") or not it.get("brand"): continue
-        if url in existing or url in seen: continue                # only genuinely new
-        cat = it["category"]
-        if cat not in CATS: continue
-        if not in_size(cat, it.get("size")): continue
-        if cat == "bottoms" and re.search(r"\b3[45]\b", norm(it.get("size"))): continue
-        if is_blazer(it.get("title")): continue
-        seen.add(url)
-        tags = tags_from(it["title"])
-        rows.append({**it, "reasons":tags, "base_score":base_score(it["brand"], tags, loved),
-                     "sz":size_bucket(it), "first_seen":TODAY, "last_seen":TODAY})
+    rows, seen = filter_new(found, existing, loved)
+
+    # ---- top up: keep pulling FRESH grailed brands until we reach the minimum ----
+    if MIN_NEW and "grailed" in SOURCES and APIFY and len(rows) < MIN_NEW:
+        pool = [b for b in loved_raw if b not in todays]
+        random.shuffle(pool)
+        while len(rows) < MIN_NEW and pool:
+            batch, pool = pool[:8], pool[8:]
+            more, mu = filter_new(scrape_grailed(batch, loved), existing | seen, loved)
+            rows += more; seen |= mu
+            print(f"  top-up +{len(more)} -> {len(rows)}/{MIN_NEW} new")
     print(f"{len(rows)} NEW in-size items after filtering")
 
     # ---- rank each new piece by his EYE, automatically (vision vs the stored rubric) ----
