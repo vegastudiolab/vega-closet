@@ -456,7 +456,7 @@
     // "scan now": trigger the cloud conductor (Supabase RPC -> GitHub Actions), then reload when the feed rebuilds.
     document.getElementById("scanNow").onclick = async function(){
       const btn=this, ok=document.getElementById("sigok");
-      btn.disabled=true; ok.textContent="scanning your brands for fresh picks… (~5 min)";
+      btn.disabled=true; ok.textContent="scanning all three sources for fresh picks… (~10-15 min)";
       let before=null;
       try { const {data:f0}=await sb.from('feeds').select('built_at').single(); before=f0&&f0.built_at; } catch(e){}
       const { error } = await sb.rpc('run_conductor');
@@ -468,7 +468,7 @@
           const {data:f}=await sb.from('feeds').select('built_at').single();
           if (f && f.built_at && f.built_at!==before){ clearInterval(iv); ok.textContent="fresh picks in — reloading"; setTimeout(()=>location.reload(),1200); return; }
         } catch(e){}
-        if (tries>=48){ clearInterval(iv); ok.textContent="still scanning — pull to refresh shortly"; btn.disabled=false; }
+        if (tries>=72){ clearInterval(iv); ok.textContent="still scanning — pull to refresh shortly"; btn.disabled=false; }
       }, 15000);
     };
 
