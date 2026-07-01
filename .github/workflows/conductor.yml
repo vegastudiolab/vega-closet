@@ -42,7 +42,7 @@ jobs:
           APIFY_TOKEN:         ${{ secrets.APIFY_TOKEN }}
           FIRECRAWL_KEY:       ${{ secrets.FIRECRAWL_KEY }}
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
-          SOURCES:        ${{ github.event.inputs.sources || 'grailed' }}
+          SOURCES:        ${{ github.event.inputs.sources || 'grailed,therealreal,ssense' }}
           MAX_PER_BRAND:  ${{ github.event.inputs.max_per_brand || '40' }}
           BRANDS_PER_RUN: ${{ github.event.inputs.brands_per_run || '24' }}
           BRANDS:         ${{ github.event.inputs.brands || '' }}
