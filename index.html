@@ -291,7 +291,7 @@
       return `<div class="card" data-id="${it.id}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${it.platform}" data-cat="${it.category}" data-sz="${it.sz||'other'}" data-price="${it.price||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}">
         <div class="imgwrap">
           ${badge}
-          <img src="${it.image}" alt="${it.title}" loading="lazy"
+          <img src="${it.image}" alt="${it.title}" loading="lazy" referrerpolicy="no-referrer" decoding="async"
                onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
           <div class="imgfallback">${initial}</div>
           ${flag}
