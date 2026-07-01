@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>vega closet · your feed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --blue:#0077CC; --cyan:#44BBDD; --sand:#E8E4DC; --ink:#0a0a0a;
+    --glass:rgba(255,255,255,0.07); --glass-hi:rgba(255,255,255,0.12);
+    --line:rgba(255,255,255,0.16); --text:#f4f6f8; --muted:rgba(244,246,248,0.6);
+    --cyan2:#44BBDD; --warn:#E8C24A; --ease:400ms cubic-bezier(0.2,0.7,0.2,1);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    font-family:'Plus Jakarta Sans',system-ui,sans-serif; color:var(--text); text-transform:lowercase;
+    background:
+      radial-gradient(1100px circle at 18% -8%, rgba(0,119,204,0.5), rgba(68,187,221,0.2) 38%, rgba(232,228,220,0.04) 72%, transparent 100%),
+      radial-gradient(900px circle at 95% 4%, rgba(68,187,221,0.16), transparent 60%),
+      var(--ink);
+    background-attachment:fixed; min-height:100vh; padding:0 0 80px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1080px; margin:0 auto; padding:30px 24px 0; }
+  header.top { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:8px; }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .dot { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,var(--blue),var(--cyan)); box-shadow:0 0 24px rgba(68,187,221,0.5); }
+  .brand h1 { font-size:19px; font-weight:600; }
+  .brand span { display:block; font-size:11.5px; color:var(--muted); font-weight:400; }
+  .stat { font-size:12.5px; color:var(--muted); text-align:right; line-height:1.6; }
+  .stat b { color:var(--cyan); font-weight:600; }
+
+  .note {
+    background:var(--glass); border:1px solid var(--line); border-left:3px solid var(--cyan);
+    border-radius:14px; padding:15px 18px; margin:18px 0 26px; font-size:14px; line-height:1.65; color:var(--text);
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); max-width:820px;
+  }
+  .filters { display:flex; gap:9px; flex-wrap:wrap; margin:0 0 22px; }
+  .filt { font-family:inherit; font-size:13px; font-weight:600; border-radius:999px; padding:8px 15px; cursor:pointer; border:1px solid var(--line); background:var(--glass-hi); color:var(--text); text-transform:lowercase; transition:all var(--ease); }
+  .filt:hover { border-color:rgba(255,255,255,0.4); }
+  .filt.on { background:var(--cyan); color:#042430; border-color:var(--cyan); }
+  .tabrow { display:flex; gap:10px; flex-wrap:wrap; margin:2px 0 16px; }
+  .tab { font-family:inherit; font-size:14.5px; font-weight:600; border-radius:12px; padding:10px 20px; cursor:pointer; border:1px solid var(--line); background:var(--glass-hi); color:var(--text); text-transform:lowercase; transition:all var(--ease); }
+  .tab:hover { border-color:rgba(255,255,255,0.45); transform:translateY(-1px); }
+  .tab.on { background:linear-gradient(135deg,var(--blue),var(--cyan)); color:#042430; border-color:transparent; box-shadow:0 8px 24px rgba(68,187,221,0.3); }
+  .tab .c, .filt .c { opacity:0.65; font-weight:500; margin-left:2px; }
+  .frow { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:9px; }
+  .frow .lbl { font-size:11.5px; color:var(--muted); letter-spacing:0.5px; margin-right:4px; min-width:58px; }
+
+  .section { margin-bottom:38px; }
+  .sec-h { display:flex; align-items:baseline; gap:12px; margin-bottom:4px; }
+  .sec-h h2 { font-size:23px; font-weight:600; }
+  .sec-h .cnt { font-size:13px; color:var(--cyan); font-weight:600; }
+  .sec-sub { font-size:13.5px; color:var(--muted); margin-bottom:18px; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:20px; }
+  .card {
+    background:var(--glass); border:1px solid var(--line); border-radius:18px; overflow:hidden;
+    display:flex; flex-direction:column; transition:transform var(--ease),border-color var(--ease),box-shadow var(--ease);
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  }
+  .card:hover { transform:translateY(-4px); border-color:rgba(255,255,255,0.4); box-shadow:0 24px 60px rgba(0,0,0,0.5); }
+  .imgwrap { position:relative; aspect-ratio:1/1.12; background:#15171a; overflow:hidden; }
+  .imgwrap img { width:100%; height:100%; object-fit:cover; display:block; transition:transform var(--ease); }
+  .card:hover .imgwrap img { transform:scale(1.04); }
+  .imgfallback { width:100%; height:100%; display:none; align-items:center; justify-content:center; font-size:34px; font-weight:700; color:rgba(255,255,255,0.18); text-transform:uppercase; }
+  .badge { position:absolute; top:11px; left:11px; background:var(--cyan); color:#042430; font-size:11.5px; font-weight:700; padding:4px 9px; border-radius:7px; }
+  .flag { position:absolute; bottom:11px; left:11px; right:11px; background:rgba(10,10,10,0.82); color:var(--warn); font-size:11.5px; font-weight:500; padding:6px 9px; border-radius:8px; backdrop-filter:blur(6px); }
+  .body { padding:14px 15px 16px; display:flex; flex-direction:column; gap:9px; flex:1; }
+  .ey { font-size:11px; letter-spacing:0.8px; color:var(--cyan); font-weight:600; }
+  .ttl { font-size:14.5px; font-weight:500; line-height:1.3; }
+  .price { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .price .now { font-size:17px; font-weight:600; }
+  .price .was { font-size:12.5px; color:var(--muted); text-decoration:line-through; }
+  .price .off { font-size:11.5px; color:#7ee0b8; font-weight:600; }
+  .meta { display:flex; gap:7px; flex-wrap:wrap; }
+  .pill { font-size:11px; border:1px solid var(--line); background:var(--glass-hi); border-radius:7px; padding:3px 8px; color:var(--muted); }
+  .why { display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
+  .why .w { font-size:10.5px; background:rgba(68,187,221,0.12); border:1px solid rgba(68,187,221,0.3); color:#cfeef7; border-radius:6px; padding:3px 7px; }
+  .acts { display:flex; gap:8px; margin-top:auto; padding-top:4px; }
+  .act { flex:1; display:flex; align-items:center; justify-content:center; gap:5px; font-family:inherit; font-size:12.5px; font-weight:600; border-radius:10px; padding:9px; cursor:pointer; border:1px solid var(--line); background:var(--glass-hi); color:var(--text); transition:all var(--ease); text-transform:lowercase; }
+  .act:hover { border-color:rgba(255,255,255,0.4); transform:translateY(-1px); }
+  .act.like:hover { border-color:var(--cyan); color:#d9f5fc; }
+  .act.pass:hover { border-color:var(--warn); }
+  .card[data-sig="like"] { border-color:var(--cyan); box-shadow:0 0 0 1px var(--cyan) inset, 0 10px 40px rgba(68,187,221,0.18); }
+  .card[data-sig="like"] .act.like { background:var(--cyan); color:#042430; border-color:var(--cyan); }
+  .card[data-sig="pass"] { opacity:0.42; }
+  .card[data-sig="pass"] .act.pass { background:var(--warn); color:#2a2300; border-color:var(--warn); }
+  body.hidepassed .card[data-sig="pass"] { display:none; }
+  .sigbar { position:fixed; left:0; right:0; bottom:0; z-index:50; background:linear-gradient(0deg, rgba(10,10,10,0.96), rgba(10,10,10,0.62) 72%, transparent); padding:14px 24px 18px; }
+  .sigbar-in { max-width:1080px; margin:0 auto; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .sigbar .cnt2 { font-size:13.5px; color:var(--muted); }
+  .sigbar .cnt2 b { color:var(--cyan); }
+  .sigbar .sp { flex:1; }
+  .sigbtn { font-family:inherit; font-size:13px; font-weight:600; border-radius:10px; padding:9px 16px; cursor:pointer; border:1px solid var(--line); background:var(--glass-hi); color:var(--text); text-transform:lowercase; transition:all var(--ease); }
+  .sigbtn:hover { border-color:rgba(255,255,255,0.45); }
+  .sigbtn.on { background:var(--cyan); color:#042430; border-color:var(--cyan); }
+  .sigok { font-size:12.5px; color:#7ee0b8; }
+  .view {
+    margin-top:auto; display:block; text-align:center; text-decoration:none; font-size:13.5px; font-weight:600;
+    background:linear-gradient(135deg,var(--blue),var(--cyan)); color:#042430; border-radius:10px; padding:10px; transition:transform var(--ease);
+  }
+  .view:hover { transform:translateY(-1px); }
+  footer { max-width:1080px; margin:10px auto 0; padding:18px 24px; font-size:12px; color:var(--muted); line-height:1.6; }
+
+  /* ---- auth gate (Vega look: dark bg, lowercase, blue->cyan gradient button) ---- */
+  #auth { display:none; min-height:100vh; align-items:center; justify-content:center; padding:24px; }
+  #auth.show { display:flex; }
+  .authcard {
+    width:100%; max-width:400px; background:var(--glass); border:1px solid var(--line); border-radius:20px;
+    padding:34px 30px; backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    display:flex; flex-direction:column; gap:16px; text-align:left;
+  }
+  .authcard .brand { margin-bottom:6px; }
+  .authcard h1 { font-size:22px; font-weight:600; }
+  .authcard span.tag { display:block; font-size:12px; color:var(--muted); font-weight:400; }
+  .authcard p.lead { font-size:13.5px; color:var(--muted); line-height:1.6; }
+  .authcard input[type="email"] {
+    font-family:inherit; font-size:15px; color:var(--text); text-transform:lowercase;
+    background:var(--glass-hi); border:1px solid var(--line); border-radius:12px; padding:13px 15px; width:100%;
+    outline:none; transition:border-color var(--ease);
+  }
+  .authcard input[type="email"]:focus { border-color:var(--cyan); }
+  .authbtn {
+    font-family:inherit; font-size:15px; font-weight:600; text-transform:lowercase; cursor:pointer;
+    background:linear-gradient(135deg,var(--blue),var(--cyan)); color:#042430; border:none; border-radius:12px;
+    padding:13px; width:100%; transition:transform var(--ease); box-shadow:0 8px 24px rgba(68,187,221,0.3);
+  }
+  .authbtn:hover { transform:translateY(-1px); }
+  .authbtn:disabled { opacity:0.6; cursor:default; transform:none; }
+  .authmsg { font-size:13px; line-height:1.6; color:#7ee0b8; }
+  .autherr { font-size:13px; line-height:1.6; color:var(--warn); }
+  .signout { font-family:inherit; background:none; border:none; color:var(--muted); font-size:12px; text-transform:lowercase; cursor:pointer; text-decoration:underline; }
+  .signout:hover { color:var(--text); }
+  #app { display:none; }
+  #app.show { display:block; }
+</style>
+</head>
+<body>
+
+<!-- ============================ AUTH GATE ============================ -->
+<div id="auth">
+  <div class="authcard">
+    <div class="brand"><div class="dot"></div><div><h1>vega closet</h1><span class="tag">your feed</span></div></div>
+    <div id="authForm">
+      <p class="lead">sign in to see today's picks. we'll email you a magic link.</p>
+      <input type="email" id="authEmail" placeholder="you@email.com" value="vegadesign.us@gmail.com" autocomplete="email" />
+      <button class="authbtn" id="authSend" type="button">send magic link</button>
+      <p class="autherr" id="authErr" style="display:none;"></p>
+    </div>
+    <div id="authSent" style="display:none;">
+      <p class="authmsg">check your email — tap the link to sign in.</p>
+      <p class="lead">sent to <b id="authSentTo"></b>. you can close this tab; the link opens you right back here signed in.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ APP / FEED ============================ -->
+<div id="app">
+  <div class="wrap">
+    <header class="top">
+      <div class="brand"><div class="dot"></div><div><h1>vega closet</h1><span id="sub">your feed</span></div></div>
+      <div class="stat" id="stat"></div>
+    </header>
+    <div class="note" id="note"></div>
+    <div class="filters" id="filters"></div>
+    <div id="sections"></div>
+  </div>
+  <footer id="foot"></footer>
+  <div class="sigbar"><div class="sigbar-in">
+    <span class="cnt2" id="sigcnt"></span>
+    <span class="sp"></span>
+    <button class="sigbtn" id="hidePass" type="button">hide passed</button>
+    <button class="signout" id="signOut" type="button">sign out</button>
+    <span class="sigok" id="sigok"></span>
+  </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // ================= SUPABASE CLIENT =================
+  const SUPABASE_URL = 'https://opmbwwodxlqktedxuppd.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_ZH2HPeburUJ0jyARX5Yhyg_j0xbYX25'; // publishable key, safe to ship to the browser
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ================= APP STATE =================
+  let USER = null;               // current session.user
+  let FEED_RENDERED = false;     // guard so onAuthStateChange doesn't re-render every event
+  let sigChannel = null;         // realtime channel handle
+
+  const money = n => "$" + Number(n).toLocaleString();
+  const platLabel = { grailed:"grailed", therealreal:"the realreal", ssense:"ssense" };
+
+  // ================= AUTH GATE (magic link) =================
+  const authEl   = document.getElementById("auth");
+  const appEl    = document.getElementById("app");
+  const authForm = document.getElementById("authForm");
+  const authSent = document.getElementById("authSent");
+
+  function showAuth(){ appEl.classList.remove("show"); authEl.classList.add("show"); }
+  function showApp(){ authEl.classList.remove("show"); appEl.classList.add("show"); }
+
+  document.getElementById("authSend").addEventListener("click", async () => {
+    const email = (document.getElementById("authEmail").value || "").trim();
+    const errEl = document.getElementById("authErr");
+    const btn = document.getElementById("authSend");
+    errEl.style.display = "none";
+    if (!email) { errEl.textContent = "enter your email first."; errEl.style.display = "block"; return; }
+    btn.disabled = true; btn.textContent = "sending…";
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href.split('#')[0] }
+    });
+    btn.disabled = false; btn.textContent = "send magic link";
+    if (error) { errEl.textContent = error.message.toLowerCase(); errEl.style.display = "block"; return; }
+    document.getElementById("authSentTo").textContent = email;
+    authForm.style.display = "none";
+    authSent.style.display = "block";
+  });
+
+  document.getElementById("signOut").addEventListener("click", async () => {
+    await sb.auth.signOut();
+  });
+
+  // React to session changes (magic-link return, sign-out, token refresh).
+  sb.auth.onAuthStateChange((_e, session) => {
+    if (session && session.user) {
+      USER = session.user;
+      showApp();
+      if (!FEED_RENDERED) boot(session);
+    } else {
+      USER = null;
+      FEED_RENDERED = false;
+      if (sigChannel) { sb.removeChannel(sigChannel); sigChannel = null; }
+      // reset auth screen to its initial (form) state
+      authForm.style.display = "block";
+      authSent.style.display = "none";
+      showAuth();
+    }
+  });
+
+  // Initial check: if a session already exists (or is present in the URL), go straight in.
+  (async () => {
+    const { data } = await sb.auth.getSession();
+    if (data && data.session && data.session.user) {
+      USER = data.session.user;
+      showApp();
+      if (!FEED_RENDERED) boot(data.session);
+    } else {
+      showAuth();
+    }
+  })();
+
+  // ================= BOOT: load feed + wire everything (once authed) =================
+  async function boot(session){
+    FEED_RENDERED = true;
+    const userId = session.user.id;
+
+    // ---- load the feed payload from Supabase ----
+    let FEED;
+    try {
+      const { data, error } = await sb.from('feeds').select('payload').single();
+      if (error && error.code !== 'PGRST116') { /* real error (not "no rows") */ console.error(error); }
+      FEED = data ? data.payload : null;
+    } catch (e) { console.error(e); FEED = null; }
+    const noFeed = !FEED || !(FEED.sections && FEED.sections.length);
+    const F = FEED || { sections: [], note: '', platforms:{} };
+    window.FEED = F;
+
+    // ---- header / note / stat ----
+    document.getElementById("sub").textContent = "your feed · " + (F.date || "");
+    const total = (F.sections||[]).reduce((a,s)=>a+s.items.filter(i=>!i.isArchived&&!i.isLiked).length,0);
+    document.getElementById("stat").innerHTML =
+      "<b>" + total + "</b> picks from <b>" + (F.scanned||0) + "</b> scanned<br>" +
+      "grailed " + (F.platforms?.grailed||0) + " · realreal " + (F.platforms?.therealreal||0) + " · ssense " + (F.platforms?.ssense||0);
+    document.getElementById("note").textContent = noFeed
+      ? "no feed yet — run a haul and your picks will show up here."
+      : (F.note || "");
+
+    // ---- card markup (VERBATIM from feed.html) ----
+    function card(it){
+      const off = it.discountPct ? `<span class="off">${it.discountPct}% off</span>` : "";
+      const was = it.originalPrice ? `<span class="was">${money(it.originalPrice)}</span>` : "";
+      const badge = it.isNew ? `<div class="badge">new</div>` : (it.discountPct ? `<div class="badge">${it.discountPct}% off</div>` : "");
+      const flag = it.flag ? `<div class="flag">${it.flag}</div>` : "";
+      const sizePill = it.size ? `<span class="pill">size ${it.size}</span>` : "";
+      const condPill = it.condition ? `<span class="pill">${it.condition}</span>` : "";
+      const why = (it.reasons||[]).slice(0,4).map(r=>`<span class="w">${r}</span>`).join("");
+      const initial = (it.brand||"?").charAt(0);
+      return `<div class="card" data-id="${it.id}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${it.platform}" data-cat="${it.category}" data-sz="${it.sz||'other'}" data-price="${it.price||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}">
+        <div class="imgwrap">
+          ${badge}
+          <img src="${it.image}" alt="${it.title}" loading="lazy"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+          <div class="imgfallback">${initial}</div>
+          ${flag}
+        </div>
+        <div class="body">
+          <div class="ey">${it.brand} · ${platLabel[it.platform]||it.platform}</div>
+          <div class="ttl">${it.title}</div>
+          <div class="price"><span class="now">${money(it.price)}</span>${was}${off}</div>
+          <div class="meta">${sizePill}${condPill}<span class="pill">${it.category}</span></div>
+          <div class="why">${why}</div>
+          <div class="acts">
+            <button class="act like" data-act="like" type="button">♥ love</button>
+            <button class="act pass" data-act="pass" type="button">✕ pass</button>
+          </div>
+          <a class="view" href="${it.url}" target="_blank" rel="noopener">view on ${platLabel[it.platform]||it.platform}</a>
+        </div>
+      </div>`;
+    }
+
+    document.getElementById("sections").innerHTML = (F.sections||[]).map(sec => `
+      <div class="section">
+        <div class="sec-h"><h2>${sec.title}</h2><span class="cnt">${sec.items.length}</span></div>
+        <div class="sec-sub">${sec.subtitle||""}</div>
+        <div class="grid">${sec.items.map(card).join("")}</div>
+      </div>`).join("");
+
+    // ---- tabs + filters (status / category / size / price / source) : VERBATIM ----
+    const VIEW = { status:"feed", cat:"all", sz:"all", price:"all", plat:"all" };
+    const cards = () => [...document.querySelectorAll(".card")];
+    const STAT  = [["feed","feed"],["liked","liked"],["archived","archived"],["all","all"]];
+    const CATS  = [["all","all"],["outerwear","outerwear"],["tops","tops"],["pants","bottoms"],["shoes","footwear"]];
+    const PLATS = [["all","all"],["grailed","grailed"],["the realreal","therealreal"],["ssense","ssense"]];
+    const PRICES= [["all","all"],["under $200","0-200"],["$200–500","200-500"],["$500–1k","500-1000"],["$1k+","1000-"]];
+    const szSeen = new Set(cards().map(c=>c.dataset.sz));
+    const SIZES = [["all","all"],["L","L"],["XL","XL"],["XXL","XXL"],["w 36","w36"],["w 38","w38"],["us 13","us13"],["us 14","us14"],["eu 47-49","eu47-49"]].filter(([l,v])=>v==="all"||szSeen.has(v));
+    function statusMatch(c,s){
+      if (s==="liked")    return c.dataset.liked==="1";
+      if (s==="archived") return c.dataset.archived==="1";
+      if (s==="all")      return true;                                   // everything: feed + liked + archived
+      return c.dataset.archived==="0" && c.dataset.liked==="0";          // feed = not yet acted on
+    }
+    function inPrice(c,val){ const p=+(c.dataset.price||0); const a=+val.split("-")[0], bs=val.split("-")[1]; return p>=a && p<(bs===""?Infinity:+bs); }
+    function dimMatch(dim,val,c){
+      if (dim==="status") return statusMatch(c,val);
+      if (val==="all")    return true;
+      if (dim==="cat")    return c.dataset.cat===val;
+      if (dim==="plat")   return c.dataset.platform===val;
+      if (dim==="sz")     return c.dataset.sz===val;
+      if (dim==="price")  return inPrice(c,val);
+      return true;
+    }
+    const DIMS = ["status","cat","sz","price","plat"];
+    function matchExcept(c,except){ for (const d of DIMS){ if (d===except) continue; if (!dimMatch(d,VIEW[d],c)) return false; } return true; }
+    function chipCount(dim,val){ return cards().filter(c=>matchExcept(c,dim)&&dimMatch(dim,val,c)).length; }
+    function renderFilters(){
+      const chip = (l,v,k)=>`<button class="filt${VIEW[k]===v?" on":""}" data-g="${k}" data-v="${v}">${l} <span class="c">${chipCount(k,v)}</span></button>`;
+      document.getElementById("filters").innerHTML =
+        `<div class="frow"><span class="lbl">show</span>${STAT.map(([l,v])=>chip(l,v,"status")).join("")}</div>` +
+        `<div class="frow"><span class="lbl">category</span>${CATS.map(([l,v])=>chip(l,v,"cat")).join("")}</div>` +
+        `<div class="frow"><span class="lbl">size</span>${SIZES.map(([l,v])=>chip(l,v,"sz")).join("")}</div>` +
+        `<div class="frow"><span class="lbl">price</span>${PRICES.map(([l,v])=>chip(l,v,"price")).join("")}</div>` +
+        `<div class="frow"><span class="lbl">source</span>${PLATS.map(([l,v])=>chip(l,v,"plat")).join("")}</div>`;
+    }
+    function applyFilters(){
+      let shown = 0;
+      cards().forEach(c=>{ const v=matchExcept(c,null); c.style.display = v ? "" : "none"; if(v) shown++; });
+      document.querySelectorAll(".section").forEach(sec=>{
+        const vis = [...sec.querySelectorAll(".card")].filter(c=>c.style.display!=="none").length;
+        sec.style.display = vis ? "" : "none";
+        const cnt = sec.querySelector(".cnt"); if (cnt) cnt.textContent = vis;
+      });
+      const st=document.getElementById("stat"); if(st) st.innerHTML = "<b>"+shown+"</b> shown of <b>"+(F.scanned||0)+"</b> tracked";
+      renderFilters();
+    }
+    document.getElementById("filters").addEventListener("click", e=>{
+      const b=e.target.closest("[data-g]"); if(!b) return;
+      VIEW[b.dataset.g] = b.dataset.v;
+      applyFilters();
+    });
+    applyFilters();
+
+    document.getElementById("foot").textContent =
+      "vega closet · prices and availability change, tap through to confirm on the platform · love and pass train your next run.";
+
+    // ---- like / pass training signals -> SUPABASE (replaces localStorage + export) ----
+    // Index items by url (Supabase keys on user_id,url) and keep a by-id map for the tap handler.
+    const ITEMS = {};                    // id -> item
+    const URL_OF = {};                   // id -> url
+    (F.sections||[]).forEach(s=>s.items.forEach(it=>{ ITEMS[it.id]=it; URL_OF[it.id]=it.url; }));
+
+    // In-memory signal state keyed by url: { url: 'liked' | 'passed' }
+    const SIG = {};                      // url -> action
+    function actOf(url){ return SIG[url] || ""; }
+    function sigTag(url){ const a=actOf(url); return a==="liked" ? "like" : a==="passed" ? "pass" : ""; }
+
+    // Seed SIG from the payload's own flags. They already reflect the signals table at build
+    // time AND match exactly what each card renders, so there is no 1000-row query cap and no
+    // drift between the counter and the cards. Realtime (below) reconciles live cross-device taps.
+    (F.sections||[]).forEach(s=>s.items.forEach(it=>{
+      if (it.isLiked)         SIG[it.url] = "liked";
+      else if (it.isArchived) SIG[it.url] = "passed";
+    }));
+
+    function applyStates(){
+      document.querySelectorAll(".card").forEach(c=>{
+        const url = decodeURIComponent(c.dataset.url||"");
+        const a = actOf(url);
+        if (a==="liked")      { c.dataset.liked="1"; c.dataset.archived="0"; }   // honor prior taps on load
+        else if (a==="passed"){ c.dataset.archived="1"; c.dataset.liked="0"; }
+        c.dataset.sig = sigTag(url);
+      });
+    }
+    function updateSigBar(){
+      let l=0,p=0; Object.values(SIG).forEach(a=>{ if(a==="liked") l++; else if(a==="passed") p++; });
+      document.getElementById("sigcnt").innerHTML = "♥ <b>"+l+"</b> loved · ✕ <b>"+p+"</b> passed";
+    }
+
+    // Tap handler: optimistic UI first (identical feel), then persist to Supabase.
+    document.getElementById("sections").addEventListener("click", async e=>{
+      const btn=e.target.closest(".act"); if(!btn) return;
+      const cardEl=btn.closest(".card"); const id=cardEl.dataset.id; const it=ITEMS[id]; if(!it) return;
+      const url = it.url;
+
+      const want = btn.dataset.act==="like" ? "liked" : "passed";
+      const prev = SIG[url];
+      let next;                                  // '' means toggled OFF (returns to feed)
+      if (prev===want) next = "";                // tapping the active action toggles it off
+      else next = want;                          // sets (or switches) the action
+
+      // ---- optimistic UI (same as feed.html: move between tabs + update sig) ----
+      if (next) SIG[url] = next; else delete SIG[url];
+      cardEl.dataset.sig = sigTag(url);
+      cardEl.dataset.liked   = SIG[url]==="liked"  ? "1" : "0";
+      cardEl.dataset.archived= SIG[url]==="passed" ? "1" : "0";
+      updateSigBar();
+      applyFilters();                            // loved -> jumps to liked tab and leaves the feed
+
+      // ---- persist ----
+      document.getElementById("sigok").textContent = "";
+      try {
+        if (next) {
+          const { error } = await sb.from('signals').upsert({
+            user_id: userId, url, action: next,
+            brand: it.brand, category: it.category, reasons: it.reasons||[], price: it.price
+          }, { onConflict: 'user_id,url' });
+          if (error) throw error;
+        } else {
+          const { error } = await sb.from('signals').delete().match({ user_id: userId, url });
+          if (error) throw error;
+        }
+      } catch (err) {
+        console.error(err);
+        // roll back optimistic state on failure
+        if (prev) SIG[url] = prev; else delete SIG[url];
+        cardEl.dataset.sig = sigTag(url);
+        cardEl.dataset.liked   = SIG[url]==="liked"  ? "1" : "0";
+        cardEl.dataset.archived= SIG[url]==="passed" ? "1" : "0";
+        updateSigBar();
+        applyFilters();
+        document.getElementById("sigok").textContent = "couldn't save — try again";
+      }
+    });
+
+    document.getElementById("hidePass").onclick=function(){ document.body.classList.toggle("hidepassed"); this.classList.toggle("on"); };
+
+    applyStates(); updateSigBar();
+    if (cards().filter(c=>c.dataset.archived==="0"&&c.dataset.liked==="0").length===0) VIEW.status="all";  // feed empty -> show all
+    applyFilters();
+
+    // ---- REALTIME: reconcile signals across devices (don't fight local optimistic state) ----
+    if (sigChannel) { sb.removeChannel(sigChannel); sigChannel = null; }
+    sigChannel = sb.channel('sig')
+      .on('postgres_changes',
+        { event:'*', schema:'public', table:'signals', filter:'user_id=eq.'+userId },
+        payload => {
+          const row = payload.new || payload.old; if (!row || !row.url) return;
+          const url = row.url;
+          if (payload.eventType === 'DELETE') { delete SIG[url]; }
+          else { SIG[url] = row.action; }
+          // reflect on the matching card (if it's in this feed), then refresh views
+          document.querySelectorAll(".card").forEach(c=>{
+            if (decodeURIComponent(c.dataset.url||"") !== url) return;
+            c.dataset.liked    = SIG[url]==="liked"  ? "1" : "0";
+            c.dataset.archived = SIG[url]==="passed" ? "1" : "0";
+            c.dataset.sig      = sigTag(url);
+          });
+          updateSigBar();
+          applyFilters();
+        })
+      .subscribe();
+  }
+</script>
+</body>
+</html>
