@@ -167,6 +167,7 @@
     <div class="note" id="note"></div>
     <div class="filters" id="filters"></div>
     <div id="sections"></div>
+    <div id="emptymsg" style="display:none;text-align:center;padding:46px 24px;color:#8b93a7;font-size:15px;line-height:1.55;"></div>
   </div>
   <footer id="foot"></footer>
   <div class="sigbar"><div class="sigbar-in">
@@ -363,6 +364,14 @@
         const cnt = sec.querySelector(".cnt"); if (cnt) cnt.textContent = vis;
       });
       const st=document.getElementById("stat"); if(st) st.innerHTML = "<b>"+shown+"</b> shown of <b>"+(F.scanned||0)+"</b> tracked";
+      const em=document.getElementById("emptymsg");
+      if (em){
+        if (shown===0){ em.style.display="block";
+          em.textContent = VIEW.status==="feed"     ? "you're all caught up. tap scan now for fresh pieces, or 'all' to browse everything you've saved."
+                         : VIEW.status==="liked"    ? "nothing loved here yet."
+                         : VIEW.status==="archived" ? "nothing passed here yet." : "nothing here yet."; }
+        else em.style.display="none";
+      }
       renderFilters();
     }
     document.getElementById("filters").addEventListener("click", e=>{
@@ -485,7 +494,8 @@
     };
 
     applyStates(); updateSigBar();
-    if (cards().filter(c=>c.dataset.archived==="0"&&c.dataset.liked==="0").length===0) VIEW.status="all";  // feed empty -> show all
+    // Stay in the review (feed) view even when it's empty — the empty-state message shows instead.
+    // Never auto-switch to "all", where loved/passed items reappear and a stray tap toggles them off.
     applyFilters();
 
     // ---- REALTIME: reconcile signals across devices (don't fight local optimistic state) ----
