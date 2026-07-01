@@ -214,8 +214,11 @@ def scrape_ssense(brands, loved_raw, per_brand=6):
             meta = szdata.get("metadata") or {}
             og = meta.get("ogImage") or meta.get("og:image") or ""
             if isinstance(og, list): og = og[0] if og else ""
-            img = (og or (szdata.get("json") or {}).get("image") or p.get("image") or "").split("?")[0]  # og:image is the reliable real image
-            if not img.startswith("http"): continue                                       # never store a data:/placeholder image
+            def _valid(u):                                                                # only a real, full ssense image (not a truncated/placeholder url)
+                u = (u or "").split("?")[0]
+                return u if (u.startswith("http") and ("res.cloudinary.com/ssenseweb/image/upload/" in u or re.search(r"ssensemedia\.com/images/w_\d", u))) else None
+            img = _valid(og) or _valid((szdata.get("json") or {}).get("image")) or _valid(p.get("image"))
+            if not img: continue                                                          # no usable image -> skip the item entirely
             m = re.search(r"(\d+)$", purl)
             out.append({"url":purl,"id":(m.group(1) if m else purl),"platform":"ssense","brand":b,
                         "title":title,"category":cat,"price":p.get("price"),"size":sizes,
