@@ -98,6 +98,9 @@
   .sigbtn:hover { border-color:rgba(255,255,255,0.45); }
   .sigbtn.on { background:var(--cyan); color:#042430; border-color:var(--cyan); }
   .sigok { font-size:12.5px; color:#7ee0b8; }
+  .scanbar { max-width:1080px; margin:9px auto 0; height:3px; border-radius:99px; background:rgba(255,255,255,0.09); overflow:hidden; opacity:0; transition:opacity .3s var(--ease); }
+  .scanbar.on { opacity:1; }
+  .scanbar-fill { height:100%; width:0%; border-radius:99px; background:linear-gradient(90deg,#0077CC,var(--cyan)); transition:width .8s ease; }
   .view {
     margin-top:auto; display:block; text-align:center; text-decoration:none; font-size:13.5px; font-weight:600;
     background:linear-gradient(135deg,var(--blue),var(--cyan)); color:#042430; border-radius:10px; padding:10px; transition:transform var(--ease);
@@ -173,7 +176,9 @@
     <button class="sigbtn" id="hidePass" type="button">hide passed</button>
     <button class="signout" id="signOut" type="button">sign out</button>
     <span class="sigok" id="sigok"></span>
-  </div></div>
+  </div>
+  <div class="scanbar" id="scanbar"><div class="scanbar-fill" id="scanfill"></div></div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -456,19 +461,24 @@
     // "scan now": trigger the cloud conductor (Supabase RPC -> GitHub Actions), then reload when the feed rebuilds.
     document.getElementById("scanNow").onclick = async function(){
       const btn=this, ok=document.getElementById("sigok");
+      const bar=document.getElementById("scanbar"), fill=document.getElementById("scanfill");
       btn.disabled=true; ok.textContent="scanning all three sources for fresh picks… (~10-15 min)";
+      bar.classList.add("on"); fill.style.width="2%";
+      const EST=13*60*1000, t0=Date.now();                  // ease toward 90% over the estimate; snap to 100% when it finishes
+      const tick=setInterval(()=>{ fill.style.width=Math.min(90, 90*(1-Math.exp(-(Date.now()-t0)/(EST*0.6)))).toFixed(1)+"%"; }, 800);
+      const done=(finished)=>{ clearInterval(tick); if(finished){ fill.style.width="100%"; } else { bar.classList.remove("on"); setTimeout(()=>{fill.style.width="0%";},350); } };
       let before=null;
       try { const {data:f0}=await sb.from('feeds').select('built_at').single(); before=f0&&f0.built_at; } catch(e){}
       const { error } = await sb.rpc('run_conductor');
-      if (error){ ok.textContent="couldn't start scan"; btn.disabled=false; return; }
+      if (error){ ok.textContent="couldn't start scan"; btn.disabled=false; done(false); return; }
       let tries=0;
       const iv=setInterval(async ()=>{
         tries++;
         try {
           const {data:f}=await sb.from('feeds').select('built_at').single();
-          if (f && f.built_at && f.built_at!==before){ clearInterval(iv); ok.textContent="fresh picks in — reloading"; setTimeout(()=>location.reload(),1200); return; }
+          if (f && f.built_at && f.built_at!==before){ clearInterval(iv); done(true); ok.textContent="fresh picks in — reloading"; setTimeout(()=>location.reload(),1400); return; }
         } catch(e){}
-        if (tries>=72){ clearInterval(iv); ok.textContent="still scanning — pull to refresh shortly"; btn.disabled=false; }
+        if (tries>=72){ clearInterval(iv); done(false); ok.textContent="still scanning — pull to refresh shortly"; btn.disabled=false; }
       }, 15000);
     };
 
