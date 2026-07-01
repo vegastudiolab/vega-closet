@@ -27,6 +27,7 @@ SB_URL   = os.environ["SUPABASE_URL"].rstrip("/")
 SB_SECRET= os.environ["SUPABASE_SECRET_KEY"]
 APIFY    = os.environ.get("APIFY_TOKEN", "")
 FIRE     = os.environ.get("FIRECRAWL_KEY", "")
+ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SOURCES  = [s.strip() for s in os.environ.get("SOURCES", "grailed,therealreal,ssense").split(",") if s.strip()]
 MAX_PER_BRAND = int(os.environ.get("MAX_PER_BRAND", "40"))
 BRANDS_PER_RUN= int(os.environ.get("BRANDS_PER_RUN", "24"))
@@ -210,6 +211,34 @@ def scrape_ssense(brands, loved_raw, per_brand=6):
                         "condition":"new","image":(p.get("image") or "").split("?")[0]})
     return out
 
+# ---------- rank a new piece by his EYE (Claude vision vs the stored taste rubric) ----------
+def vision_score(image_url, brief):
+    if not (ANTHROPIC_KEY and brief and image_url): return None
+    prompt = ("You are ranking one menswear piece for a single collector. His visual taste rubric:\n"
+              + (brief.get("brief","")) + "\n\nLOVED signals: " + "; ".join(brief.get("lovedSignals", []))
+              + "\nPASSED signals: " + "; ".join(brief.get("passedSignals", []))
+              + "\n\nLook at the photo and score how strongly THIS piece matches his taste. "
+                "0.90-1.00 quintessentially him; 0.65-0.85 clearly his lane; 0.40-0.60 plausible; "
+                "0.15-0.35 leans passed; 0.00-0.15 not him. Also give 3-6 short visual tags. Call the score tool.")
+    body = {"model": "claude-haiku-4-5-20251001", "max_tokens": 400,
+            "tools": [{"name": "score", "description": "Record taste-fit score and visual tags.",
+                       "input_schema": {"type": "object", "properties": {
+                           "visualFit": {"type": "number"}, "tags": {"type": "array", "items": {"type": "string"}}},
+                           "required": ["visualFit", "tags"]}}],
+            "tool_choice": {"type": "tool", "name": "score"},
+            "messages": [{"role": "user", "content": [
+                {"type": "image", "source": {"type": "url", "url": image_url}},
+                {"type": "text", "text": prompt}]}]}
+    st, r = http("POST", "https://api.anthropic.com/v1/messages", body,
+                 {"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01"}, timeout=60)
+    if st != 200 or not isinstance(r, dict): return None
+    for block in r.get("content", []):
+        if block.get("type") == "tool_use":
+            inp = block.get("input") or {}
+            vf = inp.get("visualFit")
+            if isinstance(vf, (int, float)): return (float(vf), inp.get("tags") or [])
+    return None
+
 # ---------- main ----------
 def fetch_all(table, select):
     rows=[]; start=0; step=1000
@@ -224,8 +253,10 @@ def fetch_all(table, select):
 def main():
     # loved brands from Charles's taste row (first taste row = him for now)
     st, tastes = sb("GET", "/rest/v1/taste?select=payload&limit=1")
-    loved_raw = ((tastes or [{}])[0].get("payload", {}).get("brands", {}) or {}).get("loved", []) if tastes else []
+    payload = (tastes or [{}])[0].get("payload", {}) if tastes else {}
+    loved_raw = (payload.get("brands", {}) or {}).get("loved", [])
     loved = set(norm(b) for b in loved_raw)
+    brief = payload.get("visualBrief")   # the learned visual taste rubric (owned + liked vs passed)
     if not loved_raw:
         print("no loved brands found — aborting"); return
     # brands: explicit override (on-demand / testing) OR a rotating slice to bound daily cost
@@ -263,6 +294,21 @@ def main():
         rows.append({**it, "reasons":tags, "base_score":base_score(it["brand"], tags, loved),
                      "sz":size_bucket(it), "first_seen":TODAY, "last_seen":TODAY})
     print(f"{len(rows)} NEW in-size items after filtering")
+
+    # ---- rank each new piece by his EYE, automatically (vision vs the stored rubric) ----
+    if ANTHROPIC_KEY and brief and rows:
+        from concurrent.futures import ThreadPoolExecutor
+        def _av(r):
+            res = vision_score(r.get("image"), brief)
+            if res:
+                vf, tags = res
+                r["base_score"] = round(min(0.97, max(0.05, 0.15 + 0.80 * vf)), 3)
+                if tags: r["reasons"] = tags
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            list(ex.map(_av, rows))
+        print(f"vision-scored {len(rows)} new items against your visual taste rubric")
+    elif rows and not ANTHROPIC_KEY:
+        print("no ANTHROPIC_API_KEY set — new items keep the title-based base_score")
 
     for i in range(0, len(rows), 500):
         part = rows[i:i+500]

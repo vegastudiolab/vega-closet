@@ -41,6 +41,7 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           APIFY_TOKEN:         ${{ secrets.APIFY_TOKEN }}
           FIRECRAWL_KEY:       ${{ secrets.FIRECRAWL_KEY }}
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
           SOURCES:        ${{ github.event.inputs.sources || 'grailed' }}
           MAX_PER_BRAND:  ${{ github.event.inputs.max_per_brand || '40' }}
           BRANDS_PER_RUN: ${{ github.event.inputs.brands_per_run || '24' }}
