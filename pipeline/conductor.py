@@ -184,12 +184,13 @@ def scrape_trr(loved, loved_raw):
                         "condition":it.get("condition") or "gently used","image":(img or "").split("?")[0]})
     return out
 
-def firecrawl_scrape(url, schema, proxy="auto", wait=9000):
+def firecrawl_scrape(url, schema, proxy="auto", wait=9000, return_meta=False):
     st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",
                  {"url":url,"formats":[{"type":"json","schema":schema}],"waitFor":wait,"proxy":proxy},
                  {"Authorization":"Bearer "+FIRE}, timeout=180)
     if st != 200 or not isinstance(r, dict): return None
-    return (r.get("data") or {}).get("json")
+    data = r.get("data") or {}
+    return data if return_meta else data.get("json")   # return_meta -> full data (json + metadata og:image)
 
 def scrape_ssense(brands, loved_raw, per_brand=6):
     # SSENSE needs the stealth proxy + a proper JSON Schema, or the extraction comes back empty.
@@ -207,10 +208,13 @@ def scrape_ssense(brands, loved_raw, per_brand=6):
             if cat not in CATS: continue
             purl = (p.get("url") or "").split("?")[0]
             if not purl: continue
-            szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000) or {}       # sizes + REAL image live on the product page
-            sizes = " ".join(szdata.get("sizesAvailable") or [])
+            szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000, return_meta=True) or {}   # json (sizes) + metadata (og:image)
+            sizes = " ".join((szdata.get("json") or {}).get("sizesAvailable") or [])
             if not in_size(cat, sizes): continue
-            img = (szdata.get("image") or p.get("image") or "").split("?")[0]             # listing src is a lazy placeholder; prefer product-page image
+            meta = szdata.get("metadata") or {}
+            og = meta.get("ogImage") or meta.get("og:image") or ""
+            if isinstance(og, list): og = og[0] if og else ""
+            img = (og or (szdata.get("json") or {}).get("image") or p.get("image") or "").split("?")[0]  # og:image is the reliable real image
             if not img.startswith("http"): continue                                       # never store a data:/placeholder image
             m = re.search(r"(\d+)$", purl)
             out.append({"url":purl,"id":(m.group(1) if m else purl),"platform":"ssense","brand":b,
