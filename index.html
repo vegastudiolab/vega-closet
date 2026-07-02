@@ -122,6 +122,81 @@
   #topBtn.show { opacity:1; transform:translateY(0); pointer-events:auto; }
   #topBtn:hover { border-color:var(--cyan); color:var(--cyan); }
 
+  /* ---- search bar ---- */
+  .searchbox { position:relative; margin:0 0 20px; }
+  .searchbox input {
+    font-family:inherit; font-size:14px; color:var(--text); text-transform:lowercase;
+    background:var(--glass-hi); border:1px solid var(--line); border-radius:12px;
+    padding:11px 42px 11px 15px; width:100%; outline:none;
+    transition:border-color var(--ease); backdrop-filter:blur(18px);
+  }
+  .searchbox input:focus { border-color:var(--cyan); }
+  .searchbox input::placeholder { color:var(--muted); }
+  .searchbox .clr {
+    position:absolute; right:13px; top:50%; transform:translateY(-50%);
+    background:none; border:none; color:var(--muted); font-size:15px; cursor:pointer;
+    padding:4px; display:none;
+  }
+  .searchbox.has-text .clr { display:block; }
+  .searchbox.has-text input { border-color:rgba(68,187,221,0.5); }
+
+  /* ---- scan config bottom sheet ---- */
+  .scan-overlay {
+    position:fixed; inset:0; z-index:79; background:rgba(0,0,0,0.55);
+    opacity:0; pointer-events:none; transition:opacity 350ms ease;
+  }
+  .scan-overlay.on { opacity:1; pointer-events:auto; }
+  .scan-sheet {
+    position:fixed; left:0; right:0; bottom:0; z-index:80;
+    background:rgba(14,16,20,0.98); border-top:1px solid var(--line);
+    border-radius:20px 20px 0 0; padding:22px 22px 38px;
+    transform:translateY(100%); transition:transform 380ms cubic-bezier(0.2,0.7,0.2,1);
+    backdrop-filter:blur(28px); -webkit-backdrop-filter:blur(28px);
+  }
+  .scan-sheet.open { transform:translateY(0); }
+  .scan-sheet h3 { font-size:17px; font-weight:600; margin-bottom:18px; }
+  .sheet-row { margin-bottom:16px; }
+  .sheet-lbl { font-size:11px; color:var(--muted); letter-spacing:0.5px; margin-bottom:8px; display:block; text-transform:uppercase; }
+  .sheet-pills { display:flex; gap:8px; flex-wrap:wrap; }
+  .src-tog {
+    font-family:inherit; font-size:13px; font-weight:600; border-radius:999px;
+    padding:7px 14px; cursor:pointer; border:1px solid var(--line);
+    background:var(--glass-hi); color:var(--text); text-transform:lowercase;
+    transition:all var(--ease);
+  }
+  .src-tog.on { background:var(--cyan); color:#042430; border-color:var(--cyan); }
+  .sheet-input {
+    font-family:inherit; font-size:14px; color:var(--text); text-transform:lowercase;
+    background:var(--glass-hi); border:1px solid var(--line); border-radius:10px;
+    padding:10px 13px; width:100%; outline:none; transition:border-color var(--ease);
+  }
+  .sheet-input:focus { border-color:var(--cyan); }
+  .sheet-input::placeholder { color:var(--muted); }
+  .sheet-btns { display:flex; gap:10px; margin-top:22px; }
+  .sheet-go {
+    flex:1; font-family:inherit; font-size:14px; font-weight:600; text-transform:lowercase;
+    cursor:pointer; border:none; border-radius:12px; padding:13px;
+    background:linear-gradient(135deg,var(--blue),var(--cyan)); color:#042430;
+    transition:transform var(--ease); box-shadow:0 8px 24px rgba(68,187,221,0.28);
+  }
+  .sheet-go:hover { transform:translateY(-1px); }
+  .sheet-go:disabled { opacity:0.5; cursor:default; transform:none; }
+  .sheet-close {
+    font-family:inherit; font-size:14px; font-weight:600; text-transform:lowercase;
+    cursor:pointer; border:1px solid var(--line); border-radius:12px; padding:13px 18px;
+    background:var(--glass-hi); color:var(--text); transition:all var(--ease);
+  }
+  .sheet-close:hover { border-color:rgba(255,255,255,0.4); }
+  /* cancel button visible during active scan */
+  #cancelScan {
+    font-family:inherit; font-size:13px; font-weight:600; border-radius:10px;
+    padding:9px 16px; cursor:pointer; border:1px solid var(--warn);
+    background:transparent; color:var(--warn); text-transform:lowercase;
+    transition:all var(--ease); display:none;
+  }
+  #cancelScan.show { display:inline-block; }
+  #cancelScan:hover { background:rgba(232,194,74,0.12); }
+
   /* ---- auth gate (Vega look: dark bg, lowercase, blue->cyan gradient button) ---- */
   #auth { display:none; min-height:100vh; align-items:center; justify-content:center; padding:24px; }
   #auth.show { display:flex; }
@@ -180,6 +255,10 @@
     </header>
     <div class="note" id="note"></div>
     <div class="filters" id="filters"></div>
+    <div class="searchbox" id="searchbox">
+      <input type="search" id="searchInput" placeholder="search brand, title, style tag…" autocomplete="off" />
+      <button class="clr" id="searchClear" type="button" tabindex="-1">✕</button>
+    </div>
     <div id="sections"></div>
     <div id="emptymsg" style="display:none;text-align:center;padding:46px 24px;color:#8b93a7;font-size:15px;line-height:1.55;"></div>
   </div>
@@ -188,6 +267,7 @@
     <span class="cnt2" id="sigcnt"></span>
     <span class="sp"></span>
     <button class="sigbtn" id="scanNow" type="button">scan now</button>
+    <button id="cancelScan" type="button">cancel scan</button>
     <button class="sigbtn" id="hidePass" type="button">hide passed</button>
     <button class="signout" id="signOut" type="button">sign out</button>
     <span class="sigok" id="sigok"></span>
@@ -197,6 +277,32 @@
 </div>
 
 <button id="topBtn" title="back to top" aria-label="scroll to top">↑</button>
+
+<!-- scan config overlay + bottom sheet -->
+<div class="scan-overlay" id="scanOverlay"></div>
+<div class="scan-sheet" id="scanSheet">
+  <h3>configure scan</h3>
+  <div class="sheet-row">
+    <span class="sheet-lbl">sources</span>
+    <div class="sheet-pills">
+      <button class="src-tog on" data-src="grailed"      type="button">grailed</button>
+      <button class="src-tog on" data-src="therealreal"  type="button">the realreal</button>
+      <button class="src-tog on" data-src="ssense"       type="button">ssense</button>
+    </div>
+  </div>
+  <div class="sheet-row">
+    <span class="sheet-lbl">specific brands (comma list — blank uses your full loved list)</span>
+    <input class="sheet-input" id="scanBrands" type="text" placeholder="rick owens, prada, maison margiela…" autocomplete="off" />
+  </div>
+  <div class="sheet-row">
+    <span class="sheet-lbl">min new items to find</span>
+    <input class="sheet-input" id="scanMinNew" type="number" value="50" min="0" max="500" style="max-width:110px;" />
+  </div>
+  <div class="sheet-btns">
+    <button class="sheet-go" id="startScan" type="button">start scan</button>
+    <button class="sheet-close" id="closeSheet" type="button">close</button>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -334,13 +440,15 @@
         <div class="grid">${sec.items.map(card).join("")}</div>
       </div>`).join("");
 
-    // ---- tabs + filters (status / category / size / price / source) : VERBATIM ----
-    const VIEW = { status:"feed", cat:"all", sz:"all", price:"all", plat:"all" };
+    // ---- tabs + filters ----
+    const VIEW = { status:"feed", cat:"all", sz:"all", price:"all", plat:"all", sort:"default" };
+    let SEARCH_Q = "";
     const cards = () => [...document.querySelectorAll(".card")];
     const STAT  = [["feed","feed"],["liked","liked"],["archived","archived"],["all","all"]];
     const CATS  = [["all","all"],["outerwear","outerwear"],["tops","tops"],["pants","bottoms"],["shoes","footwear"],["accessories","accessories"]];
     const PLATS = [["all","all"],["grailed","grailed"],["the realreal","therealreal"],["ssense","ssense"]];
     const PRICES= [["all","all"],["under $200","0-200"],["$200–500","200-500"],["$500–1k","500-1000"],["$1k+","1000-"]];
+    const SORTS = [["relevance","default"],["newest action","date-desc"],["price ↑","price-asc"],["price ↓","price-desc"]];
     const szSeen = new Set(cards().map(c=>c.dataset.sz));
     const SIZES = [["all","all"],["L","L"],["XL","XL"],["XXL","XXL"],["w 36","w36"],["w 38","w38"],["us 13","us13"],["us 14","us14"],["eu 47-49","eu47-49"]].filter(([l,v])=>v==="all"||szSeen.has(v));
     function statusMatch(c,s){
@@ -364,26 +472,58 @@
     function chipCount(dim,val){ return cards().filter(c=>matchExcept(c,dim)&&dimMatch(dim,val,c)).length; }
     function renderFilters(){
       const chip = (l,v,k)=>`<button class="filt${VIEW[k]===v?" on":""}" data-g="${k}" data-v="${v}">${l} <span class="c">${chipCount(k,v)}</span></button>`;
+      const chipS= (l,v)=>`<button class="filt${VIEW.sort===v?" on":""}" data-g="sort" data-v="${v}">${l}</button>`;
       document.getElementById("filters").innerHTML =
         `<div class="frow"><span class="lbl">show</span>${STAT.map(([l,v])=>chip(l,v,"status")).join("")}</div>` +
         `<div class="frow"><span class="lbl">category</span>${CATS.map(([l,v])=>chip(l,v,"cat")).join("")}</div>` +
         `<div class="frow"><span class="lbl">size</span>${SIZES.map(([l,v])=>chip(l,v,"sz")).join("")}</div>` +
         `<div class="frow"><span class="lbl">price</span>${PRICES.map(([l,v])=>chip(l,v,"price")).join("")}</div>` +
-        `<div class="frow"><span class="lbl">source</span>${PLATS.map(([l,v])=>chip(l,v,"plat")).join("")}</div>`;
+        `<div class="frow"><span class="lbl">source</span>${PLATS.map(([l,v])=>chip(l,v,"plat")).join("")}</div>` +
+        `<div class="frow"><span class="lbl">sort</span>${SORTS.map(([l,v])=>chipS(l,v)).join("")}</div>`;
+    }
+    function applySort(visibleCards){
+      if (VIEW.sort === "default") return;
+      document.querySelectorAll(".section").forEach(sec=>{
+        const grid = sec.querySelector(".grid"); if (!grid) return;
+        const secCards = visibleCards.filter(c => c.closest(".section") === sec);
+        if (secCards.length < 2) return;
+        secCards.sort((a,b)=>{
+          if (VIEW.sort==="date-desc"){
+            const ta = SIG_TS[decodeURIComponent(a.dataset.url||"")] || "0";
+            const tb = SIG_TS[decodeURIComponent(b.dataset.url||"")] || "0";
+            return tb.localeCompare(ta);
+          }
+          if (VIEW.sort==="price-asc")  return (+a.dataset.price||0) - (+b.dataset.price||0);
+          if (VIEW.sort==="price-desc") return (+b.dataset.price||0) - (+a.dataset.price||0);
+          return 0;
+        });
+        secCards.forEach(c=>grid.appendChild(c));
+      });
     }
     function applyFilters(){
+      const q = SEARCH_Q.toLowerCase().trim();
       let shown = 0;
-      cards().forEach(c=>{ const v=matchExcept(c,null); c.style.display = v ? "" : "none"; if(v) shown++; });
+      const visibleCards = [];
+      cards().forEach(c=>{
+        const url = decodeURIComponent(c.dataset.url||"");
+        const it = ITEM_OF[url] || {};
+        const textOk = !q || [(it.brand||""),(it.title||""),...(it.reasons||[])].join(" ").toLowerCase().includes(q);
+        const v = textOk && matchExcept(c,null);
+        c.style.display = v ? "" : "none";
+        if(v){ shown++; visibleCards.push(c); }
+      });
       document.querySelectorAll(".section").forEach(sec=>{
         const vis = [...sec.querySelectorAll(".card")].filter(c=>c.style.display!=="none").length;
         sec.style.display = vis ? "" : "none";
         const cnt = sec.querySelector(".cnt"); if (cnt) cnt.textContent = vis;
       });
+      applySort(visibleCards);
       const st=document.getElementById("stat"); if(st) st.innerHTML = "<b>"+shown+"</b> shown of <b>"+(F.scanned||0)+"</b> tracked";
       const em=document.getElementById("emptymsg");
       if (em){
         if (shown===0){ em.style.display="block";
-          em.textContent = VIEW.status==="feed"     ? "you're all caught up. tap scan now for fresh pieces, or 'all' to browse everything you've saved."
+          em.textContent = q ? "no results for \""+SEARCH_Q+"\". try a different search."
+                         : VIEW.status==="feed"     ? "you're all caught up. tap scan now for fresh pieces, or 'all' to browse everything you've saved."
                          : VIEW.status==="liked"    ? "nothing loved here yet."
                          : VIEW.status==="archived" ? "nothing passed here yet." : "nothing here yet."; }
         else em.style.display="none";
@@ -394,6 +534,20 @@
       const b=e.target.closest("[data-g]"); if(!b) return;
       VIEW[b.dataset.g] = b.dataset.v;
       applyFilters();
+    });
+    // search bar
+    const searchBox = document.getElementById("searchbox");
+    const searchIn  = document.getElementById("searchInput");
+    const searchClr = document.getElementById("searchClear");
+    searchIn.addEventListener("input", ()=>{
+      SEARCH_Q = searchIn.value;
+      searchBox.classList.toggle("has-text", !!SEARCH_Q);
+      applyFilters();
+    });
+    searchClr.addEventListener("click", ()=>{
+      searchIn.value = ""; SEARCH_Q = "";
+      searchBox.classList.remove("has-text");
+      applyFilters(); searchIn.focus();
     });
     applyFilters();
 
@@ -407,17 +561,17 @@
     const ITEM_OF = {};                  // url -> item
     (F.sections||[]).forEach(s=>s.items.forEach(it=>{ ITEM_OF[it.url]=it; }));
 
-    // In-memory signal state keyed by url: { url: 'liked' | 'passed' }
-    const SIG = {};                      // url -> action
+    // In-memory signal state keyed by url
+    const SIG    = {};   // url -> action ("liked"|"passed")
+    const SIG_TS = {};   // url -> ISO timestamp of when action was taken (for date sort)
     function actOf(url){ return SIG[url] || ""; }
     function sigTag(url){ const a=actOf(url); return a==="liked" ? "like" : a==="passed" ? "pass" : ""; }
 
-    // Seed SIG from the LIVE signals table (the source of truth), paginated PAST the 1000-row cap,
-    // so a refresh always reflects your latest taps even when the feed snapshot is older than them.
+    // Seed from LIVE signals table (source of truth), paginated past the 1000-row cap.
     for (let from=0; from<40000; from+=1000){
-      const { data: rows, error } = await sb.from('signals').select('url,action').eq('user_id', userId).range(from, from+999);
+      const { data: rows, error } = await sb.from('signals').select('url,action,created_at').eq('user_id', userId).range(from, from+999);
       if (error){ console.error(error); break; }
-      (rows||[]).forEach(r=>{ if(r.url) SIG[r.url]=r.action; });
+      (rows||[]).forEach(r=>{ if(r.url){ SIG[r.url]=r.action; if(r.created_at) SIG_TS[r.url]=r.created_at; } });
       if (!rows || rows.length < 1000) break;
     }
 
@@ -450,7 +604,7 @@
       else next = want;                          // sets (or switches) the action
 
       // ---- optimistic UI (same as feed.html: move between tabs + update sig) ----
-      if (next) SIG[url] = next; else delete SIG[url];
+      if (next){ SIG[url] = next; SIG_TS[url] = new Date().toISOString(); } else { delete SIG[url]; delete SIG_TS[url]; }
       cardEl.dataset.sig = sigTag(url);
       cardEl.dataset.liked   = SIG[url]==="liked"  ? "1" : "0";
       cardEl.dataset.archived= SIG[url]==="passed" ? "1" : "0";
@@ -485,29 +639,83 @@
 
     document.getElementById("hidePass").onclick=function(){ document.body.classList.toggle("hidepassed"); this.classList.toggle("on"); };
 
-    // "scan now": trigger the cloud conductor (Supabase RPC -> GitHub Actions), then reload when the feed rebuilds.
-    document.getElementById("scanNow").onclick = async function(){
-      const btn=this, ok=document.getElementById("sigok");
+    // ---- scan sheet + cancel ----
+    let SCAN_IV = null, SCAN_TICK = null;
+
+    const scanSheet   = document.getElementById("scanSheet");
+    const scanOverlay = document.getElementById("scanOverlay");
+    const scanNowBtn  = document.getElementById("scanNow");
+    const cancelBtn   = document.getElementById("cancelScan");
+
+    function openSheet(){ scanSheet.classList.add("open"); scanOverlay.classList.add("on"); }
+    function closeSheet(){ scanSheet.classList.remove("open"); scanOverlay.classList.remove("on"); }
+
+    scanNowBtn.addEventListener("click", ()=>{ if(!SCAN_IV) openSheet(); });
+    document.getElementById("closeSheet").addEventListener("click", closeSheet);
+    scanOverlay.addEventListener("click", closeSheet);
+
+    document.querySelectorAll(".src-tog").forEach(b=>{
+      b.addEventListener("click", ()=>b.classList.toggle("on"));
+    });
+
+    cancelBtn.addEventListener("click", ()=>{
+      if (SCAN_IV){ clearInterval(SCAN_IV); SCAN_IV=null; }
+      if (SCAN_TICK){ clearInterval(SCAN_TICK); SCAN_TICK=null; }
       const bar=document.getElementById("scanbar"), fill=document.getElementById("scanfill");
-      btn.disabled=true; ok.textContent="scanning all three sources for fresh picks… (~10-15 min)";
+      scanNowBtn.disabled=false; scanNowBtn.textContent="scan now";
+      cancelBtn.classList.remove("show");
+      bar.classList.remove("on"); setTimeout(()=>{ fill.style.width="0%"; },350);
+      document.getElementById("sigok").textContent="scan cancelled";
+      setTimeout(()=>{ document.getElementById("sigok").textContent=""; },3000);
+    });
+
+    document.getElementById("startScan").addEventListener("click", async function(){
+      const ok=document.getElementById("sigok");
+      const bar=document.getElementById("scanbar"), fill=document.getElementById("scanfill");
+
+      const srcs = [...document.querySelectorAll(".src-tog.on")].map(b=>b.dataset.src).join(",");
+      if (!srcs){ ok.textContent="pick at least one source"; return; }
+      const brands  = (document.getElementById("scanBrands").value||"").trim();
+      const minNew  = parseInt(document.getElementById("scanMinNew").value||"50",10);
+
+      closeSheet();
+      scanNowBtn.disabled=true; scanNowBtn.textContent="scanning…";
+      cancelBtn.classList.add("show");
+      ok.textContent="scanning "+srcs+" for fresh picks… (~10-15 min)";
       bar.classList.add("on"); fill.style.width="2%";
-      const EST=13*60*1000, t0=Date.now();                  // ease toward 90% over the estimate; snap to 100% when it finishes
-      const tick=setInterval(()=>{ fill.style.width=Math.min(90, 90*(1-Math.exp(-(Date.now()-t0)/(EST*0.6)))).toFixed(1)+"%"; }, 800);
-      const done=(finished)=>{ clearInterval(tick); if(finished){ fill.style.width="100%"; } else { bar.classList.remove("on"); setTimeout(()=>{fill.style.width="0%";},350); } };
+
+      const EST=13*60*1000, t0=Date.now();
+      SCAN_TICK=setInterval(()=>{ fill.style.width=Math.min(90,90*(1-Math.exp(-(Date.now()-t0)/(EST*0.6)))).toFixed(1)+"%"; },800);
+
+      const done=(finished)=>{
+        if(SCAN_TICK){ clearInterval(SCAN_TICK); SCAN_TICK=null; }
+        if(finished){ fill.style.width="100%"; }
+        else { bar.classList.remove("on"); setTimeout(()=>{ fill.style.width="0%"; },350); }
+        scanNowBtn.disabled=false; scanNowBtn.textContent="scan now";
+        cancelBtn.classList.remove("show");
+      };
+
       let before=null;
       try { const {data:f0}=await sb.from('feeds').select('built_at').single(); before=f0&&f0.built_at; } catch(e){}
-      const { error } = await sb.rpc('run_conductor');
-      if (error){ ok.textContent="couldn't start scan"; btn.disabled=false; done(false); return; }
+
+      const rpcParams = { p_sources: srcs, p_min_new: minNew };
+      if (brands) rpcParams.p_brands = brands;
+      const { error } = await sb.rpc('run_conductor', rpcParams);
+      if (error){ ok.textContent="couldn't start scan"; done(false); return; }
+
       let tries=0;
-      const iv=setInterval(async ()=>{
+      SCAN_IV=setInterval(async ()=>{
         tries++;
         try {
           const {data:f}=await sb.from('feeds').select('built_at').single();
-          if (f && f.built_at && f.built_at!==before){ clearInterval(iv); done(true); ok.textContent="fresh picks in — reloading"; setTimeout(()=>location.reload(),1400); return; }
+          if (f && f.built_at && f.built_at!==before){
+            clearInterval(SCAN_IV); SCAN_IV=null; done(true);
+            ok.textContent="fresh picks in — reloading"; setTimeout(()=>location.reload(),1400); return;
+          }
         } catch(e){}
-        if (tries>=72){ clearInterval(iv); done(false); ok.textContent="still scanning — pull to refresh shortly"; btn.disabled=false; }
-      }, 15000);
-    };
+        if (tries>=72){ clearInterval(SCAN_IV); SCAN_IV=null; done(false); ok.textContent="still scanning — pull to refresh shortly"; }
+      },15000);
+    });
 
     applyStates(); updateSigBar();
     applyFilters();
@@ -525,8 +733,8 @@
         payload => {
           const row = payload.new || payload.old; if (!row || !row.url) return;
           const url = row.url;
-          if (payload.eventType === 'DELETE') { delete SIG[url]; }
-          else { SIG[url] = row.action; }
+          if (payload.eventType === 'DELETE') { delete SIG[url]; delete SIG_TS[url]; }
+          else { SIG[url] = row.action; SIG_TS[url] = row.created_at || new Date().toISOString(); }
           // reflect on the matching card (if it's in this feed), then refresh views
           document.querySelectorAll(".card").forEach(c=>{
             if (decodeURIComponent(c.dataset.url||"") !== url) return;
