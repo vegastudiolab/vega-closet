@@ -209,12 +209,16 @@
   .authcard h1 { font-size:22px; font-weight:600; }
   .authcard span.tag { display:block; font-size:12px; color:var(--muted); font-weight:400; }
   .authcard p.lead { font-size:13.5px; color:var(--muted); line-height:1.6; }
-  .authcard input[type="email"] {
-    font-family:inherit; font-size:15px; color:var(--text); text-transform:lowercase;
+  .authcard input[type="email"], .authcard input[type="password"] {
+    font-family:inherit; font-size:15px; color:var(--text);
     background:var(--glass-hi); border:1px solid var(--line); border-radius:12px; padding:13px 15px; width:100%;
     outline:none; transition:border-color var(--ease);
   }
-  .authcard input[type="email"]:focus { border-color:var(--cyan); }
+  .authcard input[type="email"] { text-transform:lowercase; }
+  .authcard input[type="email"]:focus, .authcard input[type="password"]:focus { border-color:var(--cyan); }
+  .authlink { display:block; margin-top:10px; font-family:inherit; background:none; border:none; cursor:pointer;
+    color:var(--muted); font-size:12.5px; text-transform:lowercase; text-decoration:underline; }
+  .authlink:hover { color:var(--text); }
   .authbtn {
     font-family:inherit; font-size:15px; font-weight:600; text-transform:lowercase; cursor:pointer;
     background:linear-gradient(135deg,var(--blue),var(--cyan)); color:#042430; border:none; border-radius:12px;
@@ -238,10 +242,18 @@
     <div class="brand"><div class="dot"></div><div><h1>vega closet</h1><span class="tag">your feed</span></div></div>
     <div id="authForm">
       <p class="lead">sign in to see today's picks.</p>
-      <input type="email" id="authEmail" placeholder="you@email.com" value="vegadesign.us@gmail.com" autocomplete="email" />
+      <input type="email" id="authEmail" placeholder="you@email.com" autocomplete="email" />
       <input type="password" id="authPass" placeholder="password" autocomplete="current-password" />
       <button class="authbtn" id="authSend" type="button">sign in</button>
+      <button class="authlink" id="authForgot" type="button">forgot password?</button>
+      <p class="authmsg" id="authMsg" style="display:none;"></p>
       <p class="autherr" id="authErr" style="display:none;"></p>
+    </div>
+    <div id="resetForm" style="display:none;">
+      <p class="lead">pick a new password for your closet.</p>
+      <input type="password" id="resetPass" placeholder="new password (8+ characters)" autocomplete="new-password" />
+      <button class="authbtn" id="resetSave" type="button">save new password</button>
+      <p class="autherr" id="resetErr" style="display:none;"></p>
     </div>
   </div>
 </div>
@@ -377,12 +389,43 @@
   document.getElementById("authSend").addEventListener("click", doSignIn);
   document.getElementById("authPass").addEventListener("keydown", e => { if (e.key === "Enter") doSignIn(); });
 
+  // ---- forgot password: email a recovery link; the link lands back here and opens the reset form ----
+  document.getElementById("authForgot").addEventListener("click", async () => {
+    const email = (document.getElementById("authEmail").value || "").trim();
+    const errEl = document.getElementById("authErr"), msgEl = document.getElementById("authMsg");
+    errEl.style.display = "none"; msgEl.style.display = "none";
+    if (!email) { errEl.textContent = "enter your email first, then tap forgot password."; errEl.style.display = "block"; return; }
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if (error) { errEl.textContent = error.message.toLowerCase(); errEl.style.display = "block"; return; }
+    msgEl.textContent = "reset link sent — check your email and open it on this device.";
+    msgEl.style.display = "block";
+  });
+
+  // ---- recovery landing: the emailed link signs you in and fires PASSWORD_RECOVERY; show the set-new-password form ----
+  function showResetForm(){
+    authForm.style.display = "none";
+    document.getElementById("resetForm").style.display = "block";
+    showAuth();
+  }
+  document.getElementById("resetSave").addEventListener("click", async () => {
+    const pass = document.getElementById("resetPass").value || "";
+    const errEl = document.getElementById("resetErr");
+    errEl.style.display = "none";
+    if (pass.length < 8) { errEl.textContent = "use at least 8 characters."; errEl.style.display = "block"; return; }
+    const { error } = await sb.auth.updateUser({ password: pass });
+    if (error) { errEl.textContent = error.message.toLowerCase(); errEl.style.display = "block"; return; }
+    document.getElementById("resetForm").style.display = "none";
+    authForm.style.display = "block";
+    location.reload();   // recovery session is live — reload boots straight into the feed
+  });
+
   document.getElementById("signOut").addEventListener("click", async () => {
     await sb.auth.signOut();
   });
 
   // React to session changes (magic-link return, sign-out, token refresh).
   sb.auth.onAuthStateChange((_e, session) => {
+    if (_e === "PASSWORD_RECOVERY") { showResetForm(); return; }
     if (session && session.user) {
       USER = session.user;
       showApp();
