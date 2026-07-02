@@ -126,30 +126,48 @@ def apify_run(actor, inp, memory=1024, wait=280):
     st, items = http("GET", f"https://api.apify.com/v2/datasets/{dsid}/items?token={APIFY}&clean=true&format=json")
     return items if isinstance(items, list) else []
 
+# Grailed via ITS OWN Algolia search API — direct, server-side filtered by designer+size+condition, no proxy, effectively free.
+GRAILED_APP  = "MNRWEFSS2Q"
+GRAILED_KEY  = os.environ.get("GRAILED_KEY", "c89dbaddf15fe70e1941a109bf7c2a3d")   # public search key; self-heals on 403
+GRAILED_SIZES = ["size:l","size:xl","size:xxl","size:36","size:37","size:38","size:13","size:13.5","size:14"]  # in_size() refines
+
+def _grailed_refresh_key():
+    global GRAILED_KEY
+    if not FIRE: return
+    st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",
+                 {"url":"https://www.grailed.com/shop","formats":["rawHtml"],"proxy":"stealth"},
+                 {"Authorization":"Bearer "+FIRE}, timeout=180)
+    raw = ((r.get("data") or {}).get("rawHtml") or "") if isinstance(r, dict) else ""
+    m = re.search(r'public_search_key["\s:]{1,6}([0-9a-f]{32})', raw)
+    if m: GRAILED_KEY = m.group(1); print("  grailed search key refreshed")
+
+def grailed_algolia(facet, page=0, hpp=100, retried=False):
+    body = {"params": "query=&hitsPerPage=%d&page=%d&facetFilters=%s" % (hpp, page, urllib.parse.quote(json.dumps(facet)))}
+    st, r = http("POST", "https://%s-dsn.algolia.net/1/indexes/Listing_by_date_added_production/query" % GRAILED_APP.lower(),
+                 body, {"x-algolia-application-id": GRAILED_APP, "x-algolia-api-key": GRAILED_KEY})
+    if st in (401, 403) and not retried:                          # key rotated -> re-harvest via Firecrawl + retry once
+        _grailed_refresh_key(); return grailed_algolia(facet, page, hpp, retried=True)
+    return r if isinstance(r, dict) else {}
+
 def scrape_grailed(brands, loved):
-    # brands scraped concurrently (memory 1024 each, ~5 at a time stays well under the account cap)
-    from concurrent.futures import ThreadPoolExecutor
-    def one(b):
-        items = apify_run("crawlergang~grailed-scraper", {"searchQuery": b, "maxItems": MAX_PER_BRAND})
-        got = []
-        for it in (items or []):
-            title = it.get("title", "") or ""
-            gcat = norm(it.get("category"))
-            cat = {"outerwear":"outerwear","tops":"tops","bottoms":"bottoms","footwear":"footwear","tailoring":"outerwear"}.get(gcat) or infer_cat(title)
-            if cat not in CATS: continue
-            cond = {"is_new":"new","is_gently_used":"gently used"}.get(norm(it.get("condition")))
-            if not cond: continue                                  # drop is_used / is_worn (condition is a string)
-            url = (it.get("sourceUrl") or "").split("?")[0]
-            img = (it.get("photoUrls") or [None])[0]
-            brand = (it.get("designerNames") or [b])[0]
-            got.append({"url":url,"id":str(it.get("listingId") or ""),"platform":"grailed","brand":brand,
-                        "title":title,"category":cat,"price":it.get("price"),"size":it.get("size",""),"condition":cond,
-                        "image":(img or "").split("?")[0]})
-        print(f"  grailed '{b}': {len(items or [])} raw -> {len(got)} kept")
-        return got
+    facet = [["designers.name:" + b for b in brands], GRAILED_SIZES, ["condition:is_new", "condition:is_gently_used"]]
     out = []
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        for got in ex.map(one, brands): out += got
+    for page in range(3):                                         # newest ~300 across his brands in his sizes
+        r = grailed_algolia(facet, page=page, hpp=100)
+        hits = r.get("hits") or []
+        for h in hits:
+            if h.get("sold"): continue
+            cond = {"is_new":"new","is_gently_used":"gently used"}.get(norm(h.get("condition")))
+            if not cond: continue
+            iid = str(h.get("id") or h.get("objectID") or "")
+            dn = h.get("designer_names") or ((h.get("designers") or [{}])[0] or {}).get("name") or ""
+            title = h.get("title", "") or ""
+            out.append({"url":"https://www.grailed.com/listings/"+iid, "id":iid, "platform":"grailed",
+                        "brand":dn, "title":title, "category":infer_cat(title), "price":h.get("price"),
+                        "size":h.get("size",""), "condition":cond,
+                        "image":((h.get("cover_photo") or {}).get("url") or "").split("?")[0]})
+        if len(hits) < 100: break
+    print(f"  grailed: {len(out)} listings across {len(brands)} brand(s), via Algolia (no Apify)")
     return out
 
 # The RealReal via ITS OWN GraphQL API, through Firecrawl stealth (clears TRR's PerimeterX wall), Bright Data fallback.
@@ -339,15 +357,15 @@ def main():
     print(f"catalog has {len(existing)} urls")
 
     found = []
-    if "grailed" in SOURCES and APIFY:    found += scrape_grailed(todays, loved)
-    if "therealreal" in SOURCES and APIFY: found += scrape_trr(loved, loved_raw)
+    if "grailed" in SOURCES:              found += scrape_grailed(todays, loved)      # Grailed Algolia (no Apify)
+    if "therealreal" in SOURCES and FIRE: found += scrape_trr(loved, loved_raw)       # TRR GraphQL via Firecrawl (no Apify)
     if "ssense" in SOURCES and FIRE:      found += scrape_ssense(todays, loved_raw)
     print(f"scraped {len(found)} raw items")
 
     rows, seen = filter_new(found, existing, loved)
 
     # ---- top up: keep pulling FRESH grailed brands until we reach the minimum ----
-    if MIN_NEW and "grailed" in SOURCES and APIFY and len(rows) < MIN_NEW:
+    if MIN_NEW and "grailed" in SOURCES and len(rows) < MIN_NEW:
         pool = [b for b in loved_raw if b not in todays]
         random.shuffle(pool)
         while len(rows) < MIN_NEW and pool:
