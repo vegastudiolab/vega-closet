@@ -8,7 +8,7 @@
 #   env: SUPABASE_URL, SUPABASE_SECRET_KEY, APIFY_TOKEN, FIRECRAWL_KEY
 #        SOURCES (default "grailed,therealreal,ssense"), MAX_PER_BRAND (40),
 #        BRANDS_PER_RUN (24)  -> rotates through the loved list to keep runs cheap
-import os, sys, json, time, re, random, urllib.request, urllib.error
+import os, sys, json, time, re, random, urllib.request, urllib.error, urllib.parse
 from datetime import date
 
 # ---------- config (env, with local .env fallback) ----------
@@ -28,6 +28,7 @@ SB_SECRET= os.environ["SUPABASE_SECRET_KEY"]
 APIFY    = os.environ.get("APIFY_TOKEN", "")
 FIRE     = os.environ.get("FIRECRAWL_KEY", "")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+BRIGHTDATA     = os.environ.get("BRIGHTDATA_TOKEN", "")   # optional TRR fallback (Bright Data Web Unlocker) if Firecrawl-stealth gets blocked
 SOURCES  = [s.strip() for s in os.environ.get("SOURCES", "grailed,therealreal,ssense").split(",") if s.strip()]
 MAX_PER_BRAND = int(os.environ.get("MAX_PER_BRAND", "40"))
 BRANDS_PER_RUN= int(os.environ.get("BRANDS_PER_RUN", "24"))
@@ -151,37 +152,71 @@ def scrape_grailed(brands, loved):
         for got in ex.map(one, brands): out += got
     return out
 
+# The RealReal via ITS OWN GraphQL API, through Firecrawl stealth (clears TRR's PerimeterX wall), Bright Data fallback.
+# Filters SERVER-SIDE by designer + size, so we fetch only his brands in his sizes instead of scraping whole
+# categories and discarding ~95%. This is what took TRR off the (maxed) Apify plan — ~30-50x less volume.
+TRR_QUERY = ("query P($first:Int,$after:String,$where:ProductFilters,$sortBy:SortBy,$currency:Currencies){"
+             "products(first:$first,after:$after,where:$where,sortBy:$sortBy,currency:$currency){"
+             "totalCount pageInfo{endCursor hasNextPage} edges{node{id sku name url "
+             "brandUnion{...on Designer{name} ...on Artist{name}} price{final{usdCents}} images{url} "
+             "attributes{type values} condition}}}}")
+TRR_TAXCAT = {"men/clothing/outerwear":"outerwear", "men/clothing/sweaters-sweatshirts":"tops",
+              "men/clothing/shirts":"tops", "men/clothing/pants":"bottoms", "men/clothing/jeans":"bottoms",
+              "men/shoes":"footwear"}
+
+def _trr_json(raw):
+    i = (raw or "").find('{"data"')
+    if i < 0: return None
+    try: return json.loads(raw[i:raw.rfind('}')+1])
+    except Exception:
+        try: return json.loads(raw[i:])
+        except Exception: return None
+
+def trr_graphql(variables):
+    url = "https://api.therealreal.com/graphql?query=" + urllib.parse.quote(TRR_QUERY) + "&variables=" + urllib.parse.quote(json.dumps(variables))
+    st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",                     # Firecrawl stealth clears TRR's PerimeterX wall
+                 {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
+                 {"Authorization": "Bearer " + FIRE}, timeout=180)
+    data = (r.get("data") or {}) if isinstance(r, dict) else {}
+    sc = (data.get("metadata") or {}).get("statusCode")
+    payload = _trr_json(data.get("rawHtml") or "") if sc == 200 else None
+    if payload is None and BRIGHTDATA:                                              # fallback: Bright Data Web Unlocker (only if configured)
+        st2, r2 = http("POST", "https://api.brightdata.com/request",
+                       {"zone": os.environ.get("BRIGHTDATA_ZONE", "web_unlocker1"), "url": url, "format": "raw"},
+                       {"Authorization": "Bearer " + BRIGHTDATA}, timeout=180)
+        payload = _trr_json(r2 if isinstance(r2, str) else json.dumps(r2))
+    return ((payload or {}).get("data") or {}).get("products") if payload else None
+
 def scrape_trr(loved, loved_raw):
-    urls = ["/shop/men/clothing/outerwear","/shop/men/clothing/sweaters-sweatshirts",
-            "/shop/men/clothing/pants","/shop/men/clothing/jeans","/shop/men/clothing/shirts","/shop/men/shoes"]
+    slugs = [s for s in (re.sub(r"[^a-z0-9]+", "-", norm(b)).strip("-") for b in loved_raw) if s]  # loved brands -> TRR designer slugs
     out = []
-    for path in urls:
-        items = apify_run("piotrv1001~the-realreal-listings-scraper",
-                          {"startUrls":[{"url":"https://www.therealreal.com"+path}],"maxItems":300,
-                           "proxyConfiguration":{"useApifyProxy":True,"apifyProxyGroups":["RESIDENTIAL"],"apifyProxyCountryCode":"US"}},
-                          memory=2048)
-        if items is None: break
-        for it in items or []:
-            if norm(it.get("gender")) not in ("men", "male", "mens"): continue   # drop women's leakage
-            brand = it.get("designer") or it.get("brand") or ""
-            canon = brand_matches(brand, loved_raw)
-            if not canon: continue                                # TRR: keep only loved brands
-            title = it.get("name") or it.get("title") or ""
-            cat = infer_cat(title)
-            if cat not in CATS: continue
-            sizeparts = []                                        # size lives in typed attributes, not a 'size' field
-            for a in (it.get("attributes") or []):
-                if a.get("type") in ("CLOTHING_SIZE", "SHOE_SIZE", "MENS_WAIST"):
-                    sizeparts += [str(v) for v in (a.get("values") or [])]
-            size = " ".join(sizeparts)
-            price = None
-            try: price = it.get("price",{}).get("final",{}).get("usdCents",0)/100 or None
-            except Exception: pass
-            url = (it.get("url") or it.get("sourceUrl") or "").split("?")[0]
-            img = (it.get("images") or [None])[0]
-            out.append({"url":url,"id":str(it.get("id") or ""),"platform":"therealreal","brand":canon,
-                        "title":title,"category":cat,"price":price,"size":size,
-                        "condition":it.get("condition") or "gently used","image":(img or "").split("?")[0]})
+    for taxon, cat in TRR_TAXCAT.items():
+        buckets = {"taxonsPermalink": [taxon], "designerSlug": slugs}
+        if cat in ("outerwear", "tops"): buckets["clothingSize"] = ["27", "28", "29"]   # L/XL/XXL server-side; bottoms/shoes filtered client-side by in_size()
+        after = None
+        for _page in range(2):                                     # newest 2 pages/category = the fresh delta
+            v = {"first": 120, "currency": "USD", "sortBy": "NEWEST", "where": {"buckets": buckets}}
+            if after: v["after"] = after
+            pr = trr_graphql(v)
+            if not pr:
+                print(f"  trr {taxon}: blocked/empty"); break
+            for e in pr.get("edges", []):
+                n = e.get("node") or {}
+                brand = (n.get("brandUnion") or {}).get("name") or ""
+                sizeparts = [str(x) for a in (n.get("attributes") or []) if a.get("type") in ("CLOTHING_SIZE","SHOE_SIZE","MENS_WAIST") for x in (a.get("values") or [])]
+                price = None
+                try: price = (((n.get("price") or {}).get("final") or {}).get("usdCents") or 0) / 100 or None
+                except Exception: pass
+                imgs = n.get("images") or []
+                out.append({"url": (n.get("url") or "").split("?")[0], "id": str(n.get("id") or n.get("sku") or ""),
+                            "platform": "therealreal", "brand": brand_matches(brand, loved_raw) or brand,
+                            "title": n.get("name", ""), "category": cat, "price": price, "size": " ".join(sizeparts),
+                            "condition": n.get("condition") or "gently used",
+                            "image": ((imgs[0].get("url", "") if imgs and isinstance(imgs[0], dict) else "") or "").split("?")[0]})
+            pi = pr.get("pageInfo") or {}
+            after = pi.get("endCursor")
+            if not pi.get("hasNextPage"): break
+        print(f"  trr {taxon}: {len(out)} cumulative")
     return out
 
 def firecrawl_scrape(url, schema, proxy="auto", wait=9000, return_meta=False):
