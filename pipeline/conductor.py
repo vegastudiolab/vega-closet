@@ -150,7 +150,7 @@ def grailed_algolia(facet, page=0, hpp=100, retried=False):
     return r if isinstance(r, dict) else {}
 
 def scrape_grailed(brands, loved):
-    facet = [["designers.name:" + b for b in brands], GRAILED_SIZES, ["condition:is_new", "condition:is_gently_used"]]
+    facet = [["designers.name:" + b for b in brands], GRAILED_SIZES, ["condition:is_new", "condition:is_gently_used"], ["department:menswear"]]
     out = []
     for page in range(3):                                         # newest ~300 across his brands in his sizes
         r = grailed_algolia(facet, page=page, hpp=100)
