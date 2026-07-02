@@ -440,6 +440,10 @@
         <div class="grid">${sec.items.map(card).join("")}</div>
       </div>`).join("");
 
+    // Build ITEM_OF here (before filter setup) so applyFilters() can reference it
+    const ITEM_OF = {};
+    (F.sections||[]).forEach(s=>s.items.forEach(it=>{ ITEM_OF[it.url]=it; }));
+
     // ---- tabs + filters ----
     const VIEW = { status:"feed", cat:"all", sz:"all", price:"all", plat:"all", sort:"default" };
     let SEARCH_Q = "";
@@ -555,12 +559,6 @@
       "vega closet · prices and availability change, tap through to confirm on the platform · love and pass train your next run.";
 
     // ---- like / pass training signals -> SUPABASE (replaces localStorage + export) ----
-    // Index items by URL. url is the ONLY cross-source-unique key — grailed / the realreal /
-    // ssense each mint their own numeric ids, so an id-keyed map collides and a tap can hit the
-    // WRONG piece (pass never sticks, item reappears, double counts). Always key on url.
-    const ITEM_OF = {};                  // url -> item
-    (F.sections||[]).forEach(s=>s.items.forEach(it=>{ ITEM_OF[it.url]=it; }));
-
     // In-memory signal state keyed by url
     const SIG    = {};   // url -> action ("liked"|"passed")
     const SIG_TS = {};   // url -> ISO timestamp of when action was taken (for date sort)
