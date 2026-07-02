@@ -44,7 +44,7 @@ def http(method, url, body=None, headers=None, timeout=120):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             raw = r.read().decode()
-            return r.status, (json.loads(raw) if raw[:1] in "[{" else raw)
+            return r.status, (json.loads(raw) if raw[:1] in ("[", "{") else raw)
     except urllib.error.HTTPError as e:
         raw = e.read().decode()
         try: return e.code, json.loads(raw)

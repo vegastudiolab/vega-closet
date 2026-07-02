@@ -344,9 +344,14 @@
   let USER = null;               // current session.user
   let FEED_RENDERED = false;     // guard so onAuthStateChange doesn't re-render every event
   let sigChannel = null;         // realtime channel handle
+  let bootAbort = null;          // tears down boot()'s listeners on sign-out so re-login can't double-attach
 
   const money = n => "$" + Number(n).toLocaleString();
   const platLabel = { grailed:"grailed", therealreal:"the realreal", ssense:"ssense" };
+
+  // Escape everything scraped (titles/brands come from strangers' listings) before it hits innerHTML.
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[m]));
+  const safeUrl = u => { try { const p = new URL(u); return (p.protocol === "http:" || p.protocol === "https:") ? esc(p.href) : ""; } catch { return ""; } };
 
   // ================= AUTH GATE (email + password) =================
   const authEl   = document.getElementById("auth");
@@ -385,6 +390,7 @@
     } else {
       USER = null;
       FEED_RENDERED = false;
+      if (bootAbort) { bootAbort.abort(); bootAbort = null; }
       if (sigChannel) { sb.removeChannel(sigChannel); sigChannel = null; }
       authForm.style.display = "block";
       showAuth();
@@ -406,6 +412,9 @@
   // ================= BOOT: load feed + wire everything (once authed) =================
   async function boot(session){
     FEED_RENDERED = true;
+    if (bootAbort) bootAbort.abort();
+    bootAbort = new AbortController();
+    const LSN = { signal: bootAbort.signal };   // pass to every listener attached below
     const userId = session.user.id;
 
     // ---- load the feed payload from Supabase ----
@@ -431,41 +440,44 @@
 
     // ---- card markup (VERBATIM from feed.html) ----
     function card(it){
-      const off = it.discountPct ? `<span class="off">${it.discountPct}% off</span>` : "";
+      const pct = Number(it.discountPct) || 0;
+      const off = pct ? `<span class="off">${pct}% off</span>` : "";
       const was = it.originalPrice ? `<span class="was">${money(it.originalPrice)}</span>` : "";
-      const badge = it.isNew ? `<div class="badge">new</div>` : (it.discountPct ? `<div class="badge">${it.discountPct}% off</div>` : "");
-      const flag = it.flag ? `<div class="flag">${it.flag}</div>` : "";
-      const sizePill = it.size ? `<span class="pill">size ${it.size}</span>` : "";
-      const condPill = it.condition ? `<span class="pill">${it.condition}</span>` : "";
-      const why = (it.reasons||[]).slice(0,4).map(r=>`<span class="w">${r}</span>`).join("");
-      const initial = (it.brand||"?").charAt(0);
-      return `<div class="card" data-id="${it.id}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${it.platform}" data-cat="${it.category}" data-sz="${it.sz||'other'}" data-price="${it.price||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}">
+      const badge = it.isNew ? `<div class="badge">new</div>` : (pct ? `<div class="badge">${pct}% off</div>` : "");
+      const flag = it.flag ? `<div class="flag">${esc(it.flag)}</div>` : "";
+      const sizePill = it.size ? `<span class="pill">size ${esc(it.size)}</span>` : "";
+      const condPill = it.condition ? `<span class="pill">${esc(it.condition)}</span>` : "";
+      const why = (it.reasons||[]).slice(0,4).map(r=>`<span class="w">${esc(r)}</span>`).join("");
+      const initial = esc((it.brand||"?").charAt(0));
+      const img = safeUrl(it.image), href = safeUrl(it.url);
+      const plat = esc(platLabel[it.platform]||it.platform);
+      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}">
         <div class="imgwrap">
           ${badge}
-          <img src="${it.image}" alt="${it.title}" loading="lazy" referrerpolicy="no-referrer" decoding="async"
+          <img src="${img}" alt="${esc(it.title)}" loading="lazy" referrerpolicy="no-referrer" decoding="async"
                onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
           <div class="imgfallback">${initial}</div>
           ${flag}
         </div>
         <div class="body">
-          <div class="ey">${it.brand} · ${platLabel[it.platform]||it.platform}</div>
-          <div class="ttl">${it.title}</div>
+          <div class="ey">${esc(it.brand)} · ${plat}</div>
+          <div class="ttl">${esc(it.title)}</div>
           <div class="price"><span class="now">${money(it.price)}</span>${was}${off}</div>
-          <div class="meta">${sizePill}${condPill}<span class="pill">${it.category}</span></div>
+          <div class="meta">${sizePill}${condPill}<span class="pill">${esc(it.category)}</span></div>
           <div class="why">${why}</div>
           <div class="acts">
             <button class="act like" data-act="like" type="button">♥ love</button>
             <button class="act pass" data-act="pass" type="button">✕ pass</button>
           </div>
-          <a class="view" href="${it.url}" target="_blank" rel="noopener">view on ${platLabel[it.platform]||it.platform}</a>
+          <a class="view" href="${href}" target="_blank" rel="noopener">view on ${plat}</a>
         </div>
       </div>`;
     }
 
     document.getElementById("sections").innerHTML = (F.sections||[]).map(sec => `
       <div class="section">
-        <div class="sec-h"><h2>${sec.title}</h2><span class="cnt">${sec.items.length}</span></div>
-        <div class="sec-sub">${sec.subtitle||""}</div>
+        <div class="sec-h"><h2>${esc(sec.title)}</h2><span class="cnt">${sec.items.length}</span></div>
+        <div class="sec-sub">${esc(sec.subtitle||"")}</div>
         <div class="grid">${sec.items.map(card).join("")}</div>
       </div>`).join("");
 
@@ -567,7 +579,7 @@
       const b=e.target.closest("[data-g]"); if(!b) return;
       VIEW[b.dataset.g] = b.dataset.v;
       applyFilters();
-    });
+    }, LSN);
     // search bar
     const searchBox = document.getElementById("searchbox");
     const searchIn  = document.getElementById("searchInput");
@@ -576,12 +588,12 @@
       SEARCH_Q = searchIn.value;
       searchBox.classList.toggle("has-text", !!SEARCH_Q);
       applyFilters();
-    });
+    }, LSN);
     searchClr.addEventListener("click", ()=>{
       searchIn.value = ""; SEARCH_Q = "";
       searchBox.classList.remove("has-text");
       applyFilters(); searchIn.focus();
-    });
+    }, LSN);
     applyFilters();
 
     document.getElementById("foot").textContent =
@@ -662,7 +674,7 @@
         applyFilters();
         document.getElementById("sigok").textContent = "couldn't save — try again";
       }
-    });
+    }, LSN);
 
     document.getElementById("hidePass").onclick=function(){ document.body.classList.toggle("hidepassed"); this.classList.toggle("on"); };
 
@@ -679,15 +691,15 @@
     function closeSheet(){ scanSheet.classList.remove("open"); scanOverlay.classList.remove("on"); }
 
     // "scan all" fires immediately with full defaults
-    scanNowBtn.addEventListener("click", ()=>{ if(!SCAN_IV) fireScan({}); });
+    scanNowBtn.addEventListener("click", ()=>{ if(!SCAN_IV) fireScan({}); }, LSN);
     // "filter scan" opens the config sheet
-    scanFilterBtn.addEventListener("click", ()=>{ if(!SCAN_IV) openSheet(); });
-    document.getElementById("closeSheet").addEventListener("click", closeSheet);
-    scanOverlay.addEventListener("click", closeSheet);
+    scanFilterBtn.addEventListener("click", ()=>{ if(!SCAN_IV) openSheet(); }, LSN);
+    document.getElementById("closeSheet").addEventListener("click", closeSheet, LSN);
+    scanOverlay.addEventListener("click", closeSheet, LSN);
 
     // source toggles: multi-select (any combination)
     document.querySelectorAll("[data-src]").forEach(b=>{
-      b.addEventListener("click", ()=>b.classList.toggle("on"));
+      b.addEventListener("click", ()=>b.classList.toggle("on"), LSN);
     });
 
     // category + size: single-select within group
@@ -696,7 +708,7 @@
         b.addEventListener("click", ()=>{
           document.querySelectorAll("[data-"+group+"]").forEach(x=>x.classList.remove("on"));
           b.classList.add("on");
-        });
+        }, LSN);
       });
     }
     singleSelect("cat"); singleSelect("sz");
@@ -711,7 +723,7 @@
       bar.classList.remove("on"); setTimeout(()=>{ fill.style.width="0%"; },350);
       document.getElementById("sigok").textContent="scan cancelled";
       setTimeout(()=>{ document.getElementById("sigok").textContent=""; },3000);
-    });
+    }, LSN);
 
     document.getElementById("startScan").addEventListener("click", ()=>{
       const srcs   = [...document.querySelectorAll("[data-src].on")].map(b=>b.dataset.src).join(",");
@@ -724,7 +736,7 @@
       const minNew = parseInt(document.getElementById("scanMinNew").value||"50",10);
       closeSheet();
       fireScan({ srcs, cat, sz, query, brands, minNew });
-    });
+    }, LSN);
 
     async function fireScan({ srcs, cat, sz, query, brands, minNew }={}){
       const ok   = document.getElementById("sigok");
@@ -756,8 +768,29 @@
       const rpcParams = { p_sources: src, p_min_new: mn };
       if (brands) rpcParams.p_brands  = brands;
       if (query)  rpcParams.p_query   = query;
-      const { error } = await sb.rpc('run_conductor', rpcParams);
+      const { data: disp, error } = await sb.rpc('run_conductor', rpcParams);
       if (error){ ok.textContent="couldn't start scan"; done(false); return; }
+
+      // pg_net fires and forgets — confirm GitHub actually accepted the dispatch (204),
+      // otherwise a dead token / renamed workflow means we'd poll forever on "started".
+      if (typeof disp === "string" && disp.startsWith("queued:")){
+        const reqId = +disp.slice(7);
+        const checkDispatch = async (attempt)=>{
+          try {
+            const { data: d } = await sb.rpc('check_dispatch', { p_req: reqId });
+            if (d && d.status != null){
+              if (d.status < 200 || d.status >= 300){
+                if (SCAN_IV){ clearInterval(SCAN_IV); SCAN_IV=null; }
+                done(false);
+                ok.textContent = "scan didn't start (github said " + d.status + ") — token or workflow issue";
+              }
+              return;                                  // 2xx: dispatch confirmed, let the poll run
+            }
+            if (attempt < 3) setTimeout(()=>checkDispatch(attempt+1), 8000);  // still pending — try again
+          } catch(e){}
+        };
+        setTimeout(()=>checkDispatch(1), 8000);
+      }
 
       let tries=0;
       SCAN_IV=setInterval(async ()=>{
@@ -778,8 +811,8 @@
 
     // ---- jump to top (wired after render so button exists) ----
     const topBtn = document.getElementById("topBtn");
-    window.addEventListener("scroll", () => topBtn.classList.toggle("show", window.scrollY > 320), { passive: true });
-    topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+    window.addEventListener("scroll", () => topBtn.classList.toggle("show", window.scrollY > 320), { passive: true, signal: bootAbort.signal });
+    topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }), LSN);
 
     // ---- REALTIME: reconcile signals across devices (don't fight local optimistic state) ----
     if (sigChannel) { sb.removeChannel(sigChannel); sigChannel = null; }
