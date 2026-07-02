@@ -108,6 +108,20 @@
   .view:hover { transform:translateY(-1px); }
   footer { max-width:1080px; margin:10px auto 0; padding:18px 24px; font-size:12px; color:var(--muted); line-height:1.6; }
 
+  /* ---- jump to top ---- */
+  #topBtn {
+    position:fixed; right:22px; bottom:88px; z-index:60;
+    width:44px; height:44px; border-radius:50%;
+    border:1px solid var(--line); background:var(--glass-hi);
+    color:var(--text); font-size:20px; line-height:1; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    opacity:0; transform:translateY(8px); pointer-events:none;
+    transition:opacity var(--ease), transform var(--ease), border-color var(--ease), color var(--ease);
+  }
+  #topBtn.show { opacity:1; transform:translateY(0); pointer-events:auto; }
+  #topBtn:hover { border-color:var(--cyan); color:var(--cyan); }
+
   /* ---- auth gate (Vega look: dark bg, lowercase, blue->cyan gradient button) ---- */
   #auth { display:none; min-height:100vh; align-items:center; justify-content:center; padding:24px; }
   #auth.show { display:flex; }
@@ -181,6 +195,8 @@
   <div class="scanbar" id="scanbar"><div class="scanbar-fill" id="scanfill"></div></div>
   </div>
 </div>
+
+<button id="topBtn" title="back to top" aria-label="scroll to top">↑</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -322,7 +338,7 @@
     const VIEW = { status:"feed", cat:"all", sz:"all", price:"all", plat:"all" };
     const cards = () => [...document.querySelectorAll(".card")];
     const STAT  = [["feed","feed"],["liked","liked"],["archived","archived"],["all","all"]];
-    const CATS  = [["all","all"],["outerwear","outerwear"],["tops","tops"],["pants","bottoms"],["shoes","footwear"]];
+    const CATS  = [["all","all"],["outerwear","outerwear"],["tops","tops"],["pants","bottoms"],["shoes","footwear"],["accessories","accessories"]];
     const PLATS = [["all","all"],["grailed","grailed"],["the realreal","therealreal"],["ssense","ssense"]];
     const PRICES= [["all","all"],["under $200","0-200"],["$200–500","200-500"],["$500–1k","500-1000"],["$1k+","1000-"]];
     const szSeen = new Set(cards().map(c=>c.dataset.sz));
@@ -494,9 +510,12 @@
     };
 
     applyStates(); updateSigBar();
-    // Stay in the review (feed) view even when it's empty — the empty-state message shows instead.
-    // Never auto-switch to "all", where loved/passed items reappear and a stray tap toggles them off.
     applyFilters();
+
+    // ---- jump to top (wired after render so button exists) ----
+    const topBtn = document.getElementById("topBtn");
+    window.addEventListener("scroll", () => topBtn.classList.toggle("show", window.scrollY > 320), { passive: true });
+    topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
 
     // ---- REALTIME: reconcile signals across devices (don't fight local optimistic state) ----
     if (sigChannel) { sb.removeChannel(sigChannel); sigChannel = null; }
