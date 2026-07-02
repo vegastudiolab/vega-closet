@@ -110,7 +110,7 @@
 
   /* ---- jump to top ---- */
   #topBtn {
-    position:fixed; right:22px; bottom:88px; z-index:60;
+    position:fixed; right:22px; bottom:180px; z-index:60;
     width:44px; height:44px; border-radius:50%;
     border:1px solid var(--line); background:var(--glass-hi);
     color:var(--text); font-size:20px; line-height:1; cursor:pointer;
@@ -266,7 +266,8 @@
   <div class="sigbar"><div class="sigbar-in">
     <span class="cnt2" id="sigcnt"></span>
     <span class="sp"></span>
-    <button class="sigbtn" id="scanNow" type="button">scan now</button>
+    <button class="sigbtn" id="scanNow" type="button">scan all</button>
+    <button class="sigbtn" id="scanFilter" type="button">⊕ filter scan</button>
     <button id="cancelScan" type="button">cancel scan</button>
     <button class="sigbtn" id="hidePass" type="button">hide passed</button>
     <button class="signout" id="signOut" type="button">sign out</button>
@@ -281,7 +282,7 @@
 <!-- scan config overlay + bottom sheet -->
 <div class="scan-overlay" id="scanOverlay"></div>
 <div class="scan-sheet" id="scanSheet">
-  <h3>configure scan</h3>
+  <h3>filter scan</h3>
   <div class="sheet-row">
     <span class="sheet-lbl">sources</span>
     <div class="sheet-pills">
@@ -291,11 +292,39 @@
     </div>
   </div>
   <div class="sheet-row">
-    <span class="sheet-lbl">specific brands (comma list — blank uses your full loved list)</span>
+    <span class="sheet-lbl">category</span>
+    <div class="sheet-pills">
+      <button class="src-tog on" data-cat="all"         type="button">all</button>
+      <button class="src-tog"    data-cat="outerwear"   type="button">outerwear</button>
+      <button class="src-tog"    data-cat="tops"        type="button">tops</button>
+      <button class="src-tog"    data-cat="bottoms"     type="button">bottoms</button>
+      <button class="src-tog"    data-cat="footwear"    type="button">footwear</button>
+      <button class="src-tog"    data-cat="accessories" type="button">accessories</button>
+    </div>
+  </div>
+  <div class="sheet-row">
+    <span class="sheet-lbl">size</span>
+    <div class="sheet-pills">
+      <button class="src-tog on" data-sz="all"   type="button">all</button>
+      <button class="src-tog"    data-sz="l"     type="button">L</button>
+      <button class="src-tog"    data-sz="xl"    type="button">XL</button>
+      <button class="src-tog"    data-sz="xxl"   type="button">XXL</button>
+      <button class="src-tog"    data-sz="w36"   type="button">W36</button>
+      <button class="src-tog"    data-sz="w38"   type="button">W38</button>
+      <button class="src-tog"    data-sz="us13"  type="button">US 13</button>
+      <button class="src-tog"    data-sz="us14"  type="button">US 14</button>
+    </div>
+  </div>
+  <div class="sheet-row">
+    <span class="sheet-lbl">keyword · style · color (searches item titles)</span>
+    <input class="sheet-input" id="scanQuery" type="text" placeholder="e.g. black leather, cargo, double knee…" autocomplete="off" />
+  </div>
+  <div class="sheet-row">
+    <span class="sheet-lbl">specific brands (blank = your full loved list)</span>
     <input class="sheet-input" id="scanBrands" type="text" placeholder="rick owens, prada, maison margiela…" autocomplete="off" />
   </div>
   <div class="sheet-row">
-    <span class="sheet-lbl">min new items to find</span>
+    <span class="sheet-lbl">min new items</span>
     <input class="sheet-input" id="scanMinNew" type="number" value="50" min="0" max="500" style="max-width:110px;" />
   </div>
   <div class="sheet-btns">
@@ -640,46 +669,73 @@
     // ---- scan sheet + cancel ----
     let SCAN_IV = null, SCAN_TICK = null;
 
-    const scanSheet   = document.getElementById("scanSheet");
-    const scanOverlay = document.getElementById("scanOverlay");
-    const scanNowBtn  = document.getElementById("scanNow");
-    const cancelBtn   = document.getElementById("cancelScan");
+    const scanSheet    = document.getElementById("scanSheet");
+    const scanOverlay  = document.getElementById("scanOverlay");
+    const scanNowBtn   = document.getElementById("scanNow");
+    const scanFilterBtn= document.getElementById("scanFilter");
+    const cancelBtn    = document.getElementById("cancelScan");
 
     function openSheet(){ scanSheet.classList.add("open"); scanOverlay.classList.add("on"); }
     function closeSheet(){ scanSheet.classList.remove("open"); scanOverlay.classList.remove("on"); }
 
-    scanNowBtn.addEventListener("click", ()=>{ if(!SCAN_IV) openSheet(); });
+    // "scan all" fires immediately with full defaults
+    scanNowBtn.addEventListener("click", ()=>{ if(!SCAN_IV) fireScan({}); });
+    // "filter scan" opens the config sheet
+    scanFilterBtn.addEventListener("click", ()=>{ if(!SCAN_IV) openSheet(); });
     document.getElementById("closeSheet").addEventListener("click", closeSheet);
     scanOverlay.addEventListener("click", closeSheet);
 
-    document.querySelectorAll(".src-tog").forEach(b=>{
+    // source toggles: multi-select (any combination)
+    document.querySelectorAll("[data-src]").forEach(b=>{
       b.addEventListener("click", ()=>b.classList.toggle("on"));
     });
+
+    // category + size: single-select within group
+    function singleSelect(group){
+      document.querySelectorAll("[data-"+group+"]").forEach(b=>{
+        b.addEventListener("click", ()=>{
+          document.querySelectorAll("[data-"+group+"]").forEach(x=>x.classList.remove("on"));
+          b.classList.add("on");
+        });
+      });
+    }
+    singleSelect("cat"); singleSelect("sz");
 
     cancelBtn.addEventListener("click", ()=>{
       if (SCAN_IV){ clearInterval(SCAN_IV); SCAN_IV=null; }
       if (SCAN_TICK){ clearInterval(SCAN_TICK); SCAN_TICK=null; }
       const bar=document.getElementById("scanbar"), fill=document.getElementById("scanfill");
-      scanNowBtn.disabled=false; scanNowBtn.textContent="scan now";
+      scanNowBtn.disabled=false; scanNowBtn.textContent="scan all";
+      scanFilterBtn.disabled=false;
       cancelBtn.classList.remove("show");
       bar.classList.remove("on"); setTimeout(()=>{ fill.style.width="0%"; },350);
       document.getElementById("sigok").textContent="scan cancelled";
       setTimeout(()=>{ document.getElementById("sigok").textContent=""; },3000);
     });
 
-    document.getElementById("startScan").addEventListener("click", async function(){
-      const ok=document.getElementById("sigok");
-      const bar=document.getElementById("scanbar"), fill=document.getElementById("scanfill");
-
-      const srcs = [...document.querySelectorAll(".src-tog.on")].map(b=>b.dataset.src).join(",");
+    document.getElementById("startScan").addEventListener("click", ()=>{
+      const srcs   = [...document.querySelectorAll("[data-src].on")].map(b=>b.dataset.src).join(",");
+      const ok     = document.getElementById("sigok");
       if (!srcs){ ok.textContent="pick at least one source"; return; }
-      const brands  = (document.getElementById("scanBrands").value||"").trim();
-      const minNew  = parseInt(document.getElementById("scanMinNew").value||"50",10);
-
+      const cat    = document.querySelector("[data-cat].on")?.dataset.cat || "all";
+      const sz     = document.querySelector("[data-sz].on")?.dataset.sz  || "all";
+      const query  = (document.getElementById("scanQuery").value||"").trim();
+      const brands = (document.getElementById("scanBrands").value||"").trim();
+      const minNew = parseInt(document.getElementById("scanMinNew").value||"50",10);
       closeSheet();
+      fireScan({ srcs, cat, sz, query, brands, minNew });
+    });
+
+    async function fireScan({ srcs, cat, sz, query, brands, minNew }={}){
+      const ok   = document.getElementById("sigok");
+      const bar  = document.getElementById("scanbar"), fill=document.getElementById("scanfill");
+      const src  = srcs || "grailed,therealreal,ssense";
+      const mn   = minNew ?? 50;
+
       scanNowBtn.disabled=true; scanNowBtn.textContent="scanning…";
+      scanFilterBtn.disabled=true;
       cancelBtn.classList.add("show");
-      ok.textContent="scanning "+srcs+" for fresh picks… (~10-15 min)";
+      ok.textContent="scanning "+src+" for fresh picks… (~10-15 min)";
       bar.classList.add("on"); fill.style.width="2%";
 
       const EST=13*60*1000, t0=Date.now();
@@ -689,15 +745,17 @@
         if(SCAN_TICK){ clearInterval(SCAN_TICK); SCAN_TICK=null; }
         if(finished){ fill.style.width="100%"; }
         else { bar.classList.remove("on"); setTimeout(()=>{ fill.style.width="0%"; },350); }
-        scanNowBtn.disabled=false; scanNowBtn.textContent="scan now";
+        scanNowBtn.disabled=false; scanNowBtn.textContent="scan all";
+        scanFilterBtn.disabled=false;
         cancelBtn.classList.remove("show");
       };
 
       let before=null;
       try { const {data:f0}=await sb.from('feeds').select('built_at').single(); before=f0&&f0.built_at; } catch(e){}
 
-      const rpcParams = { p_sources: srcs, p_min_new: minNew };
-      if (brands) rpcParams.p_brands = brands;
+      const rpcParams = { p_sources: src, p_min_new: mn };
+      if (brands) rpcParams.p_brands  = brands;
+      if (query)  rpcParams.p_query   = query;
       const { error } = await sb.rpc('run_conductor', rpcParams);
       if (error){ ok.textContent="couldn't start scan"; done(false); return; }
 
@@ -713,7 +771,7 @@
         } catch(e){}
         if (tries>=72){ clearInterval(SCAN_IV); SCAN_IV=null; done(false); ok.textContent="still scanning — pull to refresh shortly"; }
       },15000);
-    });
+    }
 
     applyStates(); updateSigBar();
     applyFilters();

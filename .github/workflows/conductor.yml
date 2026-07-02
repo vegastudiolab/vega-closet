@@ -22,6 +22,9 @@ on:
       brands:
         description: 'specific brands (comma list) to scrape instead of the rotation'
         default: ''
+      query:
+        description: 'keyword / style / color to search for (passes to Algolia text search)'
+        default: ''
 
 # never let two runs stomp each other
 concurrency:
@@ -51,6 +54,7 @@ jobs:
           BRANDS_PER_RUN: ${{ github.event.inputs.brands_per_run || '24' }}
           MIN_NEW:        ${{ github.event.inputs.min_new || '0' }}
           BRANDS:         ${{ github.event.inputs.brands || '' }}
+          QUERY:          ${{ github.event.inputs.query || '' }}
         run: python pipeline/conductor.py
 
       - name: rebuild every user's feed

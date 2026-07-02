@@ -32,7 +32,8 @@ BRIGHTDATA     = os.environ.get("BRIGHTDATA_TOKEN", "")   # optional TRR fallbac
 SOURCES  = [s.strip() for s in os.environ.get("SOURCES", "grailed,therealreal,ssense").split(",") if s.strip()]
 MAX_PER_BRAND = int(os.environ.get("MAX_PER_BRAND", "40"))
 BRANDS_PER_RUN= int(os.environ.get("BRANDS_PER_RUN", "24"))
-MIN_NEW = int(os.environ.get("MIN_NEW", "0"))   # keep pulling fresh grailed brands until at least this many new (0 = off)
+MIN_NEW  = int(os.environ.get("MIN_NEW", "0"))   # keep pulling fresh grailed brands until at least this many new (0 = off)
+QUERY    = os.environ.get("QUERY", "").strip()  # optional keyword/style/color search term (passes to Algolia)
 TODAY = date.today().isoformat()
 
 def http(method, url, body=None, headers=None, timeout=120):
@@ -141,8 +142,9 @@ def _grailed_refresh_key():
     m = re.search(r'public_search_key["\s:]{1,6}([0-9a-f]{32})', raw)
     if m: GRAILED_KEY = m.group(1); print("  grailed search key refreshed")
 
-def grailed_algolia(facet, page=0, hpp=100, retried=False):
-    body = {"params": "query=&hitsPerPage=%d&page=%d&facetFilters=%s" % (hpp, page, urllib.parse.quote(json.dumps(facet)))}
+def grailed_algolia(facet, page=0, hpp=100, retried=False, query=""):
+    q = urllib.parse.quote(query or QUERY)
+    body = {"params": "query=%s&hitsPerPage=%d&page=%d&facetFilters=%s" % (q, hpp, page, urllib.parse.quote(json.dumps(facet)))}
     st, r = http("POST", "https://%s-dsn.algolia.net/1/indexes/Listing_by_date_added_production/query" % GRAILED_APP.lower(),
                  body, {"x-algolia-application-id": GRAILED_APP, "x-algolia-api-key": GRAILED_KEY})
     if st in (401, 403) and not retried:                          # key rotated -> re-harvest via Firecrawl + retry once
