@@ -876,13 +876,13 @@
     }, LSN);
 
     // scanning UI pieces are shared between a fresh scan and one resumed after the app was closed
-    function scanUI(t0){
+    function scanUI(t0, est){
       const bar=document.getElementById("scanbar"), fill=document.getElementById("scanfill");
       scanNowBtn.disabled=true; scanNowBtn.textContent="scanning…";
       scanFilterBtn.disabled=true;
       cancelBtn.classList.add("show");
       bar.classList.add("on"); fill.style.width="2%";
-      const EST=13*60*1000;
+      const EST = est || 13*60*1000;
       SCAN_TICK=setInterval(()=>{ fill.style.width=Math.min(90,90*(1-Math.exp(-(Date.now()-t0)/(EST*0.6)))).toFixed(1)+"%"; },800);
     }
     function scanDone(finished){
@@ -921,8 +921,11 @@
       const src  = srcs || "grailed,therealreal,ssense";
       const mn   = minNew ?? 50;
       const t0   = Date.now();
-      scanUI(t0);
-      ok.textContent="scanning "+src+" for fresh picks… (~10-15 min)";
+      // grailed is a fast direct API (~2 min); the realreal/ssense go through a stealth proxy (~10-15)
+      const paid = /therealreal|ssense/.test(src);
+      const est  = paid ? 13*60*1000 : 2.5*60*1000;
+      scanUI(t0, est);
+      ok.textContent="scanning "+src+" for fresh picks… (~"+(paid?"10-15 min":"2-3 min")+")";
 
       let before=null;
       try { const {data:f0}=await sb.from('feeds').select('built_at').single(); before=f0&&f0.built_at; } catch(e){}
@@ -934,7 +937,7 @@
       const { data: disp, error } = await sb.rpc('run_conductor', rpcParams);
       if (error){ ok.textContent="couldn't start scan"; scanDone(false); return; }
       // survives the app being closed mid-scan; boot resumes the wait
-      try{ localStorage.setItem("vegaCloset.scan", JSON.stringify({ t0, before })); }catch(e){}
+      try{ localStorage.setItem("vegaCloset.scan", JSON.stringify({ t0, before, est })); }catch(e){}
 
       // pg_net fires and forgets — confirm GitHub actually accepted the dispatch (204),
       // otherwise a dead token / renamed workflow means we'd poll forever on "started".
@@ -964,7 +967,7 @@
     try {
       const sc = JSON.parse(localStorage.getItem("vegaCloset.scan")||"null");
       if (sc && sc.t0 && Date.now()-sc.t0 < 20*60*1000 && !SCAN_IV){
-        scanUI(sc.t0);
+        scanUI(sc.t0, sc.est);
         document.getElementById("sigok").textContent="scan still running — waiting for fresh picks";
         startFeedPoll(sc.before ?? null, sc.t0);
       } else if (sc){ localStorage.removeItem("vegaCloset.scan"); }
