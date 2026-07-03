@@ -274,6 +274,9 @@ def scrape_trr(loved, loved_raw):
             for e in pr.get("edges", []):
                 n = e.get("node") or {}
                 brand = (n.get("brandUnion") or {}).get("name") or ""
+                # TRR leaks womenswear into men's taxons — drop anything whose gender attribute isn't men's
+                gender = " ".join(str(x) for a in (n.get("attributes") or []) if str(a.get("type","")).upper()=="GENDER" for x in (a.get("values") or [])).lower()
+                if gender and ("women" in gender or gender == "female"): continue
                 sizeparts = [str(x) for a in (n.get("attributes") or []) if a.get("type") in ("CLOTHING_SIZE","SHOE_SIZE","MENS_WAIST") for x in (a.get("values") or [])]
                 price = None
                 try: price = (((n.get("price") or {}).get("final") or {}).get("usdCents") or 0) / 100 or None
@@ -371,12 +374,23 @@ def fetch_all(table, select):
         start += step
     return rows
 
+# womenswear leaks through TRR's men's taxons (silk mini dresses tagged as men's tops).
+# "dress" alone is womenswear; "dress shirt/pants/shoes" is menswear.
+_WOMENS = re.compile(r"\bdress(es)?\b(?!\s*(shirt|pant|shoe|boot|sock))|\bwomen'?s?\b|\bladies\b|\bgown\b|\bblouse\b|\bbikini\b", re.I)
+# sources also mislabel accessories as clothing ("Leather Belt" under tops) — retag by title
+_ACC = re.compile(r"\b(belt|wallet|card ?holder|scarf|beanie|keychain|sunglasses|bracelet|necklace|ring|earring)s?\b", re.I)
+_ACC_NOT = re.compile(r"belted|belt(ed)?[- ]bag|ring[- ]?(collar|zip)", re.I)
+
 def filter_new(found, known, loved):
     rows = []; newurls = set()
     for it in found:
         url = it.get("url")
         if not url or not it.get("brand") or not str(it.get("image","")).startswith("http"): continue  # reject data:/placeholder images
         if url in known or url in newurls: continue                # only genuinely new
+        title = it.get("title") or ""
+        if _WOMENS.search(title): continue                          # womenswear leak (TRR)
+        if _ACC.search(title) and not _ACC_NOT.search(title):
+            it["category"] = "accessories"                          # belts etc. tagged as tops -> retag, then gate below
         cat = it["category"]
         if cat not in ALLOWED_CATS: continue
         if not in_size(cat, it.get("size"), it.get("brand")): continue

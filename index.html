@@ -28,7 +28,8 @@
       radial-gradient(1100px circle at 18% -8%, rgba(0,119,204,0.5), rgba(68,187,221,0.2) 38%, rgba(232,228,220,0.04) 72%, transparent 100%),
       radial-gradient(900px circle at 95% 4%, rgba(68,187,221,0.16), transparent 60%),
       var(--ink);
-    background-attachment:fixed; min-height:100vh;
+    /* no background-attachment:fixed — iOS repaints the whole gradient every scroll frame */
+    min-height:100vh;
     padding:0 0 calc(86px + env(safe-area-inset-bottom)); -webkit-font-smoothing:antialiased;
   }
   .wrap { max-width:1080px; margin:0 auto; padding:30px 24px 0; }
@@ -76,9 +77,10 @@
 
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:20px; }
   .card {
-    background:var(--glass); border:1px solid var(--line); border-radius:18px; overflow:hidden;
+    /* NO backdrop-filter here: thousands of live blur layers crash iOS WebKit on fast scroll.
+       solid tint reads the same over the dark background. */
+    background:rgba(22,25,31,0.88); border:1px solid var(--line); border-radius:18px; overflow:hidden;
     display:flex; flex-direction:column; transition:transform var(--ease),border-color var(--ease),box-shadow var(--ease);
-    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
     content-visibility:auto; contain-intrinsic-size:320px 560px;   /* offscreen cards skip layout+paint (4k+ cards) */
   }
   .card:hover { transform:translateY(-4px); border-color:rgba(255,255,255,0.4); box-shadow:0 24px 60px rgba(0,0,0,0.5); }
