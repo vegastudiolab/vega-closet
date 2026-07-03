@@ -72,6 +72,7 @@
     background:var(--glass); border:1px solid var(--line); border-radius:18px; overflow:hidden;
     display:flex; flex-direction:column; transition:transform var(--ease),border-color var(--ease),box-shadow var(--ease);
     backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    content-visibility:auto; contain-intrinsic-size:320px 560px;   /* offscreen cards skip layout+paint (4k+ cards) */
   }
   .card:hover { transform:translateY(-4px); border-color:rgba(255,255,255,0.4); box-shadow:0 24px 60px rgba(0,0,0,0.5); }
   .imgwrap { position:relative; aspect-ratio:1/1.12; background:#15171a; overflow:hidden; }
@@ -513,12 +514,18 @@
     const userId = session.user.id;
 
     // ---- load the feed payload from Supabase ----
-    let FEED;
+    let FEED, BUILT_AT = null;
     try {
-      const { data, error } = await sb.from('feeds').select('payload').single();
+      const { data, error } = await sb.from('feeds').select('payload,built_at').single();
       if (error && error.code !== 'PGRST116') { /* real error (not "no rows") */ console.error(error); }
       FEED = data ? data.payload : null;
+      BUILT_AT = data ? data.built_at : null;
     } catch (e) { console.error(e); FEED = null; }
+    const agoTxt = ts => {
+      if (!ts) return "";
+      const m = Math.max(1, Math.round((Date.now() - new Date(ts).getTime()) / 60000));
+      return m < 60 ? m + "m ago" : m < 1440 ? Math.round(m/60) + "h ago" : Math.round(m/1440) + "d ago";
+    };
     const noFeed = !FEED || !(FEED.sections && FEED.sections.length);
     const F = FEED || { sections: [], note: '', platforms:{} };
     window.FEED = F;
@@ -546,7 +553,8 @@
       const initial = esc((it.brand||"?").charAt(0));
       const img = safeUrl(it.image), href = safeUrl(it.url);
       const plat = esc(platLabel[it.platform]||it.platform);
-      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}">
+      const searchText = esc(((it.brand||"")+" "+(it.title||"")+" "+((it.reasons||[]).join(" "))).toLowerCase());
+      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}" data-search="${searchText}">
         <div class="imgwrap">
           ${badge}
           <img src="${img}" alt="${esc(it.title)}" loading="lazy" referrerpolicy="no-referrer" decoding="async"
@@ -609,12 +617,13 @@
     }
     const DIMS = ["status","cat","sz","price","plat"];
     function matchExcept(c,except){ for (const d of DIMS){ if (d===except) continue; if (!dimMatch(d,VIEW[d],c)) return false; } return true; }
-    function chipCount(dim,val){ return cards().filter(c=>matchExcept(c,dim)&&dimMatch(dim,val,c)).length; }
+    function chipCount(dim,val,cs){ return cs.filter(c=>matchExcept(c,dim)&&dimMatch(dim,val,c)).length; }
     let FILTERS_OPEN = false;
     function renderFilters(){
+      const cs = cards();   // one DOM query for all ~30 chip counts, not one each
       // zero-count chips hide themselves (unless selected) — no dead taps
       const chip = (l,v,k)=>{
-        const n = chipCount(k,v), on = VIEW[k]===v;
+        const n = chipCount(k,v,cs), on = VIEW[k]===v;
         if (!n && !on && v!=="all") return "";
         return `<button class="filt${on?" on":""}" data-g="${k}" data-v="${v}">${l} <span class="c">${n}</span></button>`;
       };
@@ -655,9 +664,7 @@
       let shown = 0;
       const visibleCards = [];
       cards().forEach(c=>{
-        const url = decodeURIComponent(c.dataset.url||"");
-        const it = ITEM_OF[url] || {};
-        const textOk = !q || [(it.brand||""),(it.title||""),...(it.reasons||[])].join(" ").toLowerCase().includes(q);
+        const textOk = !q || (c.dataset.search||"").includes(q);   // precomputed at render — no per-keystroke joins
         const v = textOk && matchExcept(c,null);
         c.style.display = v ? "" : "none";
         if(v){ shown++; visibleCards.push(c); }
@@ -668,7 +675,7 @@
         const cnt = sec.querySelector(".cnt"); if (cnt) cnt.textContent = vis;
       });
       applySort(visibleCards);
-      const st=document.getElementById("stat"); if(st) st.innerHTML = "<b>"+shown+"</b> shown of <b>"+(F.scanned||0)+"</b> tracked";
+      const st=document.getElementById("stat"); if(st) st.innerHTML = "<b>"+shown+"</b> shown of <b>"+(F.scanned||0)+"</b> tracked" + (BUILT_AT ? "<br>feed updated "+agoTxt(BUILT_AT) : "");
       const em=document.getElementById("emptymsg");
       if (em){
         if (shown===0){ em.style.display="block";
@@ -692,10 +699,11 @@
     const searchBox = document.getElementById("searchbox");
     const searchIn  = document.getElementById("searchInput");
     const searchClr = document.getElementById("searchClear");
+    let searchT = null;
     searchIn.addEventListener("input", ()=>{
       SEARCH_Q = searchIn.value;
       searchBox.classList.toggle("has-text", !!SEARCH_Q);
-      applyFilters();
+      clearTimeout(searchT); searchT = setTimeout(applyFilters, 150);   // debounce: one pass per pause, not per keystroke
     }, LSN);
     searchClr.addEventListener("click", ()=>{
       searchIn.value = ""; SEARCH_Q = "";
@@ -850,8 +858,9 @@
       scanFilterBtn.disabled=false;
       cancelBtn.classList.remove("show");
       bar.classList.remove("on"); setTimeout(()=>{ fill.style.width="0%"; },350);
-      document.getElementById("sigok").textContent="scan cancelled";
-      setTimeout(()=>{ document.getElementById("sigok").textContent=""; },3000);
+      try{ localStorage.removeItem("vegaCloset.scan"); }catch(e){}
+      document.getElementById("sigok").textContent="stopped waiting — the scan finishes on its own, feed updates when done";
+      setTimeout(()=>{ document.getElementById("sigok").textContent=""; },5000);
     }, LSN);
 
     document.getElementById("startScan").addEventListener("click", ()=>{
@@ -866,29 +875,54 @@
       fireScan({ srcs, cat, query, brands, minNew });
     }, LSN);
 
-    async function fireScan({ srcs, cat, query, brands, minNew }={}){
-      const ok   = document.getElementById("sigok");
-      const bar  = document.getElementById("scanbar"), fill=document.getElementById("scanfill");
-      const src  = srcs || "grailed,therealreal,ssense";
-      const mn   = minNew ?? 50;
-
+    // scanning UI pieces are shared between a fresh scan and one resumed after the app was closed
+    function scanUI(t0){
+      const bar=document.getElementById("scanbar"), fill=document.getElementById("scanfill");
       scanNowBtn.disabled=true; scanNowBtn.textContent="scanning…";
       scanFilterBtn.disabled=true;
       cancelBtn.classList.add("show");
-      ok.textContent="scanning "+src+" for fresh picks… (~10-15 min)";
       bar.classList.add("on"); fill.style.width="2%";
-
-      const EST=13*60*1000, t0=Date.now();
+      const EST=13*60*1000;
       SCAN_TICK=setInterval(()=>{ fill.style.width=Math.min(90,90*(1-Math.exp(-(Date.now()-t0)/(EST*0.6)))).toFixed(1)+"%"; },800);
+    }
+    function scanDone(finished){
+      const bar=document.getElementById("scanbar"), fill=document.getElementById("scanfill");
+      if(SCAN_TICK){ clearInterval(SCAN_TICK); SCAN_TICK=null; }
+      if(finished){ fill.style.width="100%"; }
+      else { bar.classList.remove("on"); setTimeout(()=>{ fill.style.width="0%"; },350); }
+      scanNowBtn.disabled=false; scanNowBtn.textContent="scan all";
+      scanFilterBtn.disabled=false;
+      cancelBtn.classList.remove("show");
+      try{ localStorage.removeItem("vegaCloset.scan"); }catch(e){}
+    }
+    function reloadKeepingContext(){
+      // refresh brings in the new feed but keeps filters, search and scroll position
+      try{ sessionStorage.setItem("vegaCloset.restore", JSON.stringify({ view:VIEW, q:SEARCH_Q, y:window.scrollY })); }catch(e){}
+      location.reload();
+    }
+    function startFeedPoll(before, t0){
+      const ok = document.getElementById("sigok");
+      let tries = Math.max(0, Math.floor((Date.now()-t0)/15000));   // resumed scans keep their elapsed budget
+      SCAN_IV=setInterval(async ()=>{
+        tries++;
+        try {
+          const {data:f}=await sb.from('feeds').select('built_at').single();
+          if (f && f.built_at && f.built_at!==before){
+            clearInterval(SCAN_IV); SCAN_IV=null; scanDone(true);
+            ok.textContent="fresh picks in — refreshing"; setTimeout(reloadKeepingContext,1400); return;
+          }
+        } catch(e){}
+        if (tries>=72){ clearInterval(SCAN_IV); SCAN_IV=null; scanDone(false); ok.textContent="still scanning — pull to refresh shortly"; }
+      },15000);
+    }
 
-      const done=(finished)=>{
-        if(SCAN_TICK){ clearInterval(SCAN_TICK); SCAN_TICK=null; }
-        if(finished){ fill.style.width="100%"; }
-        else { bar.classList.remove("on"); setTimeout(()=>{ fill.style.width="0%"; },350); }
-        scanNowBtn.disabled=false; scanNowBtn.textContent="scan all";
-        scanFilterBtn.disabled=false;
-        cancelBtn.classList.remove("show");
-      };
+    async function fireScan({ srcs, cat, query, brands, minNew }={}){
+      const ok   = document.getElementById("sigok");
+      const src  = srcs || "grailed,therealreal,ssense";
+      const mn   = minNew ?? 50;
+      const t0   = Date.now();
+      scanUI(t0);
+      ok.textContent="scanning "+src+" for fresh picks… (~10-15 min)";
 
       let before=null;
       try { const {data:f0}=await sb.from('feeds').select('built_at').single(); before=f0&&f0.built_at; } catch(e){}
@@ -898,7 +932,9 @@
       if (query)              rpcParams.p_query    = query;
       if (cat && cat!=="all") rpcParams.p_category = cat;
       const { data: disp, error } = await sb.rpc('run_conductor', rpcParams);
-      if (error){ ok.textContent="couldn't start scan"; done(false); return; }
+      if (error){ ok.textContent="couldn't start scan"; scanDone(false); return; }
+      // survives the app being closed mid-scan; boot resumes the wait
+      try{ localStorage.setItem("vegaCloset.scan", JSON.stringify({ t0, before })); }catch(e){}
 
       // pg_net fires and forgets — confirm GitHub actually accepted the dispatch (204),
       // otherwise a dead token / renamed workflow means we'd poll forever on "started".
@@ -910,7 +946,7 @@
             if (d && d.status != null){
               if (d.status < 200 || d.status >= 300){
                 if (SCAN_IV){ clearInterval(SCAN_IV); SCAN_IV=null; }
-                done(false);
+                scanDone(false);
                 ok.textContent = "scan didn't start (github said " + d.status + ") — token or workflow issue";
               }
               return;                                  // 2xx: dispatch confirmed, let the poll run
@@ -921,19 +957,29 @@
         setTimeout(()=>checkDispatch(1), 8000);
       }
 
-      let tries=0;
-      SCAN_IV=setInterval(async ()=>{
-        tries++;
-        try {
-          const {data:f}=await sb.from('feeds').select('built_at').single();
-          if (f && f.built_at && f.built_at!==before){
-            clearInterval(SCAN_IV); SCAN_IV=null; done(true);
-            ok.textContent="fresh picks in — reloading"; setTimeout(()=>location.reload(),1400); return;
-          }
-        } catch(e){}
-        if (tries>=72){ clearInterval(SCAN_IV); SCAN_IV=null; done(false); ok.textContent="still scanning — pull to refresh shortly"; }
-      },15000);
+      startFeedPoll(before, t0);
     }
+
+    // a scan was running when the app closed — pick the wait back up instead of losing it
+    try {
+      const sc = JSON.parse(localStorage.getItem("vegaCloset.scan")||"null");
+      if (sc && sc.t0 && Date.now()-sc.t0 < 20*60*1000 && !SCAN_IV){
+        scanUI(sc.t0);
+        document.getElementById("sigok").textContent="scan still running — waiting for fresh picks";
+        startFeedPoll(sc.before ?? null, sc.t0);
+      } else if (sc){ localStorage.removeItem("vegaCloset.scan"); }
+    } catch(e){}
+
+    // restore view context after an in-place refresh (scan completion / reloadKeepingContext)
+    try {
+      const rs = JSON.parse(sessionStorage.getItem("vegaCloset.restore")||"null");
+      sessionStorage.removeItem("vegaCloset.restore");
+      if (rs){
+        if (rs.view) Object.assign(VIEW, rs.view);
+        if (rs.q){ SEARCH_Q = rs.q; searchIn.value = rs.q; searchBox.classList.add("has-text"); }
+        if (rs.y) setTimeout(()=>window.scrollTo(0, rs.y), 80);
+      }
+    } catch(e){}
 
     applyStates(); updateSigBar();
     applyFilters();
