@@ -157,6 +157,36 @@ def grailed_algolia(facet, page=0, hpp=100, retried=False, query=""):
         _grailed_refresh_key(); return grailed_algolia(facet, page, hpp, retried=True)
     return r if isinstance(r, dict) else {}
 
+def _grailed_facet_search(q, retried=False):
+    body = {"params": "facetQuery=%s&maxFacetHits=5" % urllib.parse.quote(q)}
+    st, r = http("POST", "https://%s-dsn.algolia.net/1/indexes/Listing_by_date_added_production/facets/designers.name/query" % GRAILED_APP.lower(),
+                 body, {"x-algolia-application-id": GRAILED_APP, "x-algolia-api-key": GRAILED_KEY})
+    if st in (401, 403) and not retried:
+        _grailed_refresh_key(); return _grailed_facet_search(q, retried=True)
+    return [fh.get("value") for fh in (r.get("facetHits") or [])] if isinstance(r, dict) else []
+
+def grailed_canon_brands(raw_list):
+    # canonicalize user-typed brand names against grailed's own designer index. Handles the
+    # missing-comma case ("thug club adidas") by greedy longest-span matching per word group.
+    out, missed = [], []
+    for seg in raw_list:
+        vals = _grailed_facet_search(seg)
+        exact = next((v for v in vals if norm(v) == norm(seg)), None)
+        if exact: out.append(exact); continue
+        toks = seg.split(); i = 0; matched_any = False
+        while i < len(toks):
+            hit = None
+            for j in range(len(toks), i, -1):                     # longest span first
+                span = " ".join(toks[i:j])
+                vals = _grailed_facet_search(span)
+                hit = next((v for v in vals if norm(v) == norm(span)), None)
+                if hit: i = j; break
+            if hit: out.append(hit); matched_any = True
+            else: i += 1
+        if not matched_any: missed.append(seg)
+    if missed: print(f"  grailed: no designer match for {missed} — dropped from this scan")
+    return out
+
 def scrape_grailed(brands, loved):
     facet = [["designers.name:" + b for b in brands], GRAILED_SIZES, ["condition:is_new", "condition:is_gently_used"], ["department:menswear"]]
     if CATEGORY: facet.append(["category:" + CATEGORY])           # grailed's category facet uses our exact five names
@@ -171,8 +201,9 @@ def scrape_grailed(brands, loved):
             iid = str(h.get("id") or h.get("objectID") or "")
             dn = h.get("designer_names") or ((h.get("designers") or [{}])[0] or {}).get("name") or ""
             title = h.get("title", "") or ""
+            gcat = h.get("category")                              # trust grailed's own label; fall back to title inference
             out.append({"url":"https://www.grailed.com/listings/"+iid, "id":iid, "platform":"grailed",
-                        "brand":dn, "title":title, "category":infer_cat(title), "price":h.get("price"),
+                        "brand":dn, "title":title, "category":(gcat if gcat in CATS else infer_cat(title)), "price":h.get("price"),
                         "size":h.get("size",""), "condition":cond,
                         "image":((h.get("cover_photo") or {}).get("url") or "").split("?")[0]})
         if len(hits) < 100: break
@@ -357,7 +388,13 @@ def main():
     # brands: explicit override (on-demand / testing) OR a rotating slice to bound daily cost
     override = os.environ.get("BRANDS", "").strip()
     if override:
-        todays = [b.strip() for b in override.split(",") if b.strip()]
+        # canonicalize what he typed against grailed's designer index (fixes case, typos,
+        # and missing commas like "thug club adidas" -> Thug Club + Adidas)
+        typed = [b.strip() for b in override.split(",") if b.strip()]
+        todays = grailed_canon_brands(typed)
+        print(f"brand override: {typed} -> {todays}")
+        if not todays:
+            print("none of the requested brands exist on grailed — aborting instead of scanning randoms"); return
     else:
         n = min(BRANDS_PER_RUN, len(loved_raw))
         todays = random.sample(loved_raw, n)          # random slice each run so repeat scans hit fresh brands
@@ -373,10 +410,11 @@ def main():
     deep = set((payload.get("signals", {}) or {}).get("brandLanes", {}).get("deepGatedBrands") or [])
     doy = date.today().timetuple().tm_yday
     def weekly_slot(b): return zlib.crc32(norm(b).encode()) % 7 == doy % 7
-    paid_raw   = [b for b in loved_raw if norm(b) not in deep or weekly_slot(b)]
+    paid_base  = todays if override else loved_raw    # a brand-specific scan stays brand-specific on EVERY source
+    paid_raw   = [b for b in paid_base if norm(b) not in deep or weekly_slot(b)]
     paid_today = [b for b in todays    if norm(b) not in deep or weekly_slot(b)]
-    if len(paid_raw) < len(loved_raw):
-        skipped = sorted(set(norm(b) for b in loved_raw) - set(norm(b) for b in paid_raw))
+    if len(paid_raw) < len(paid_base):
+        skipped = sorted(set(norm(b) for b in paid_base) - set(norm(b) for b in paid_raw))
         print(f"paid sources skip {len(skipped)} deep-gated brand(s) today (weekly slot): {skipped}")
 
     found = []
@@ -403,7 +441,9 @@ def main():
     rows, seen = filter_new(found, existing, loved)
 
     # ---- top up: keep pulling FRESH grailed brands until we reach the minimum ----
-    if MIN_NEW and "grailed" in SOURCES and len(rows) < MIN_NEW:
+    # NEVER on a brand-specific scan: asking for thug club must not backfill with randoms —
+    # coming back under target is the honest answer when the brand has nothing new.
+    if MIN_NEW and "grailed" in SOURCES and len(rows) < MIN_NEW and not override:
         pool = [b for b in loved_raw if b not in todays]
         random.shuffle(pool)
         while len(rows) < MIN_NEW and pool:
