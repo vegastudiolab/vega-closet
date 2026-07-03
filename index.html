@@ -622,7 +622,7 @@
     const PRICES= [["all","all"],["under $200","0-200"],["$200–500","200-500"],["$500–1k","500-1000"],["$1k+","1000-"]];
     const SORTS = [["relevance","default"],["newest action","date-desc"],["price ↑","price-asc"],["price ↓","price-desc"]];
     const szSeen = new Set(cards().map(c=>c.dataset.sz));
-    const SIZES = [["all","all"],["L","L"],["XL","XL"],["XXL","XXL"],["w 36","w36"],["w 38","w38"],["us 14","us14"],["us 15","us15"],["eu 46-48","eu46-48"],["us 13","us13"],["eu 47-49","eu47-49"]].filter(([l,v])=>v==="all"||szSeen.has(v));
+    const SIZES = [["all","all"],["L","L"],["XL","XL"],["XXL","XXL"],["w 36","w36"],["w 38","w38"],["us 14","us14"],["us 15","us15"],["eu 46-48","eu46-48"],["one size","os"],["us 13","us13"],["eu 47-49","eu47-49"]].filter(([l,v])=>v==="all"||szSeen.has(v));
     function statusMatch(c,s){
       if (s==="liked")    return c.dataset.liked==="1";
       if (s==="archived") return c.dataset.archived==="1";

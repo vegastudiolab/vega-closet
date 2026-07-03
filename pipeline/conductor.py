@@ -63,6 +63,9 @@ def norm(s): return (s or "").strip().lower()
 
 # ---------- filters (mirror ingest.py + the scraper size rules) ----------
 CATS = ("outerwear", "bottoms", "tops", "footwear")
+# accessories are OPT-IN: only an explicit accessories scan pulls them (97% are "one size" —
+# letting them into every scan would flood the feed). Everything routes through ALLOWED_CATS.
+ALLOWED_CATS = ("accessories",) if os.environ.get("CATEGORY", "").strip().lower() == "accessories" else CATS
 def infer_cat(title):
     t = norm(title)
     if re.search(r"jacket|bomber|coat|parka|puffer|trench|vest|cardigan|anorak|blazer|overshirt|shearling|hoodie.*zip", t): return "outerwear"
@@ -79,6 +82,10 @@ def is_blazer(title):
 
 def in_size(cat, s, brand=""):
     s = norm(s)
+    if cat == "accessories":
+        # belts need his waist (36-38 / eu 90-95); everything else is one-size
+        if not s or "one size" in s or s in ("os", "o/s"): return True
+        return bool(re.search(r"\b(36|37|38|90|95)\b", s))
     if not s: return False
     if cat == "footwear":
         # US 14-15 / EU 47-48. US 13 is out (taste-training only, never fit) — EXCEPT Balenciaga,
@@ -137,6 +144,7 @@ def apify_run(actor, inp, memory=1024, wait=280):
 GRAILED_APP  = "MNRWEFSS2Q"
 GRAILED_KEY  = os.environ.get("GRAILED_KEY", "c89dbaddf15fe70e1941a109bf7c2a3d")   # public search key; self-heals on 403
 GRAILED_SIZES = ["size:l","size:xl","size:xxl","size:36","size:37","size:38","size:13","size:14","size:14.5","size:15"]  # size:13 stays for balenciaga (eu46); in_size() refines
+GRAILED_SIZES_ACC = ["size:one size","size:36","size:37","size:38"]                    # accessories: 97% are one-size; belts by waist
 
 def _grailed_refresh_key():
     global GRAILED_KEY
@@ -173,6 +181,9 @@ def grailed_canon_brands(raw_list):
         vals = _grailed_facet_search(seg)
         exact = next((v for v in vals if norm(v) == norm(seg)), None)
         if exact: out.append(exact); continue
+        # partial name -> top designer that starts with it ("bottega" -> "Bottega Veneta")
+        pfx = next((v for v in vals if norm(v).startswith(norm(seg))), None)
+        if pfx: print(f"  grailed: '{seg}' -> '{pfx}'"); out.append(pfx); continue
         toks = seg.split(); i = 0; matched_any = False
         while i < len(toks):
             hit = None
@@ -188,7 +199,8 @@ def grailed_canon_brands(raw_list):
     return out
 
 def scrape_grailed(brands, loved):
-    facet = [["designers.name:" + b for b in brands], GRAILED_SIZES, ["condition:is_new", "condition:is_gently_used"], ["department:menswear"]]
+    sizes = GRAILED_SIZES_ACC if CATEGORY == "accessories" else GRAILED_SIZES
+    facet = [["designers.name:" + b for b in brands], sizes, ["condition:is_new", "condition:is_gently_used"], ["department:menswear"]]
     if CATEGORY: facet.append(["category:" + CATEGORY])           # grailed's category facet uses our exact five names
     out = []
     for page in range(3):                                         # newest ~300 across his brands in his sizes
@@ -203,7 +215,7 @@ def scrape_grailed(brands, loved):
             title = h.get("title", "") or ""
             gcat = h.get("category")                              # trust grailed's own label; fall back to title inference
             out.append({"url":"https://www.grailed.com/listings/"+iid, "id":iid, "platform":"grailed",
-                        "brand":dn, "title":title, "category":(gcat if gcat in CATS else infer_cat(title)), "price":h.get("price"),
+                        "brand":dn, "title":title, "category":(gcat if gcat in ALLOWED_CATS else infer_cat(title)), "price":h.get("price"),
                         "size":h.get("size",""), "condition":cond,
                         "image":((h.get("cover_photo") or {}).get("url") or "").split("?")[0]})
         if len(hits) < 100: break
@@ -299,7 +311,7 @@ def scrape_ssense(brands, loved_raw, per_brand=6):
         prods = (data or {}).get("products") or []
         for p in prods[:per_brand]:
             title = p.get("name",""); cat = infer_cat(title)
-            if cat not in CATS: continue
+            if cat not in ALLOWED_CATS: continue
             if CATEGORY and cat != CATEGORY: continue             # category scan: skip before the pricey product-page scrape
             purl = (p.get("url") or "").split("?")[0]
             if not purl: continue
@@ -366,7 +378,7 @@ def filter_new(found, known, loved):
         if not url or not it.get("brand") or not str(it.get("image","")).startswith("http"): continue  # reject data:/placeholder images
         if url in known or url in newurls: continue                # only genuinely new
         cat = it["category"]
-        if cat not in CATS: continue
+        if cat not in ALLOWED_CATS: continue
         if not in_size(cat, it.get("size"), it.get("brand")): continue
         if cat == "bottoms" and re.search(r"\b3[45]\b", norm(it.get("size"))): continue
         if is_blazer(it.get("title")): continue
@@ -498,6 +510,8 @@ def size_bucket(it):
         if "46" in s or "47" in s or "48" in s: return "eu46-48"
         if "13" in s: return "eu46-48"          # balenciaga eu46 normalized to us13
         return "other"
+    if cat == "accessories":
+        return "os"
     if cat == "bottoms":
         if "38" in s: return "w38"
         if "36" in s or "37" in s: return "w36"
