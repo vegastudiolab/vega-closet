@@ -150,7 +150,29 @@
   #topBtn.show { opacity:1; transform:translateY(0); pointer-events:auto; }
   #topBtn:hover { border-color:var(--cyan); color:var(--cyan); }
 
+  /* ---- compact grid view (fast review mode) ---- */
+  body.compact .grid { grid-template-columns:repeat(auto-fill,minmax(146px,1fr)); gap:10px; }
+  body.compact .card { border-radius:14px; }
+  body.compact .imgwrap { aspect-ratio:1/1.05; cursor:pointer; }
+  body.compact .body { padding:9px 10px 10px; gap:5px; }
+  body.compact .ey { font-size:9.5px; letter-spacing:0.4px; }
+  body.compact .ttl { font-size:12px; line-height:1.25; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+  body.compact .price .now { font-size:14px; }
+  body.compact .price .was, body.compact .price .off { font-size:10.5px; }
+  body.compact .why, body.compact .meta, body.compact .view, body.compact .flag { display:none; }
+  body.compact .act { font-size:11.5px; padding:7px; border-radius:8px; }
+  body.compact .badge { font-size:10px; padding:3px 7px; top:8px; left:8px; }
+
   /* ---- search bar ---- */
+  .searchrow { display:flex; gap:8px; align-items:center; margin:0 0 20px; }
+  .searchrow .searchbox { flex:1; margin:0; }
+  #viewToggle {
+    width:42px; height:42px; flex:0 0 auto; border-radius:12px; cursor:pointer;
+    border:1px solid var(--line); background:var(--glass-hi); color:var(--text);
+    font-size:17px; line-height:1; display:flex; align-items:center; justify-content:center;
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); transition:border-color var(--ease);
+  }
+  #viewToggle:hover { border-color:var(--cyan); }
   .searchbox { position:relative; margin:0 0 20px; }
   .searchbox input {
     font-family:inherit; font-size:14px; color:var(--text); text-transform:lowercase;
@@ -295,9 +317,12 @@
     </header>
     <div class="note" id="note"></div>
     <div class="filters" id="filters"></div>
-    <div class="searchbox" id="searchbox">
-      <input type="search" id="searchInput" placeholder="search brand, title, style tag…" autocomplete="off" />
-      <button class="clr" id="searchClear" type="button" tabindex="-1">✕</button>
+    <div class="searchrow">
+      <div class="searchbox" id="searchbox">
+        <input type="search" id="searchInput" placeholder="search brand, title, style tag…" autocomplete="off" />
+        <button class="clr" id="searchClear" type="button" tabindex="-1">✕</button>
+      </div>
+      <button id="viewToggle" type="button" title="switch to compact grid" aria-label="toggle grid view">⊞</button>
     </div>
     <div id="sections"></div>
     <div id="emptymsg" style="display:none;text-align:center;padding:46px 24px;color:#8b93a7;font-size:15px;line-height:1.55;"></div>
@@ -677,6 +702,18 @@
       searchBox.classList.remove("has-text");
       applyFilters(); searchIn.focus();
     }, LSN);
+
+    // full cards <-> compact grid (fast review); remembered across sessions
+    const viewBtn = document.getElementById("viewToggle");
+    function setView(grid){
+      document.body.classList.toggle("compact", grid);
+      viewBtn.textContent = grid ? "▤" : "⊞";
+      viewBtn.title = grid ? "switch to full cards" : "switch to compact grid";
+      try { localStorage.setItem("vegaCloset.view", grid ? "grid" : "cards"); } catch(e){}
+    }
+    let savedView = "cards"; try { savedView = localStorage.getItem("vegaCloset.view") || "cards"; } catch(e){}
+    setView(savedView === "grid");
+    viewBtn.addEventListener("click", ()=>setView(!document.body.classList.contains("compact")), LSN);
     applyFilters();
 
     document.getElementById("foot").textContent =
@@ -714,6 +751,15 @@
 
     // Tap handler: optimistic UI first (identical feel), then persist to Supabase.
     document.getElementById("sections").addEventListener("click", async e=>{
+      // compact grid hides the "view on" link — tapping the photo opens the listing instead
+      if (document.body.classList.contains("compact") && !e.target.closest(".act")){
+        const iw = e.target.closest(".imgwrap");
+        if (iw){
+          const u = decodeURIComponent(iw.closest(".card")?.dataset.url || "");
+          if (u) window.open(u, "_blank", "noopener");
+          return;
+        }
+      }
       const btn=e.target.closest(".act"); if(!btn) return;
       const cardEl=btn.closest(".card");
       const url = decodeURIComponent(cardEl.dataset.url||"");  if(!url) return;   // the card's OWN url (ids collide across sources)
