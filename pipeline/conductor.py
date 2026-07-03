@@ -419,6 +419,15 @@ def main():
     elif rows and not ANTHROPIC_KEY:
         print("no ANTHROPIC_API_KEY set — new items keep the title-based base_score")
 
+    # MIN_NEW is a TARGET, not just a floor: the top-up loop pulls brands until we reach it,
+    # and here we cap at exactly N — his best N by taste score, or the newest N on a raw scan.
+    # Under N comes back only when that's all the sources had. (0 = uncapped, daily cron.)
+    if MIN_NEW and len(rows) > MIN_NEW:
+        if not NO_VISION:
+            rows.sort(key=lambda r: -(r.get("base_score") or 0))
+        print(f"target {MIN_NEW}: keeping the {'top-scored' if not NO_VISION else 'newest'} {MIN_NEW} of {len(rows)} found")
+        rows = rows[:MIN_NEW]
+
     for i in range(0, len(rows), 500):
         part = rows[i:i+500]
         st, res = sb("POST", "/rest/v1/catalog?on_conflict=url", part, {"Prefer":"resolution=ignore-duplicates,return=minimal"})

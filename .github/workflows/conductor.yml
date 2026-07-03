@@ -17,7 +17,7 @@ on:
         description: 'how many loved brands to scrape this run'
         default: '24'
       min_new:
-        description: 'keep pulling fresh grailed brands until at least this many new (0 = off)'
+        description: 'target new pieces: top up brands to reach it, then cap at exactly this many (best-scored kept; 0 = uncapped)'
         default: '0'
       brands:
         description: 'specific brands (comma list) to scrape instead of the rotation'
