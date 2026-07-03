@@ -362,10 +362,22 @@ def main():
     existing = set(r["url"] for r in fetch_all("catalog", "url"))
     print(f"catalog has {len(existing)} urls")
 
+    # deep-gated brands (computed by build_feed_cloud from his live signals): the paid sources
+    # sample them once a week instead of daily; grailed is free so it keeps them at full cadence
+    import zlib
+    deep = set((payload.get("signals", {}) or {}).get("brandLanes", {}).get("deepGatedBrands") or [])
+    doy = date.today().timetuple().tm_yday
+    def weekly_slot(b): return zlib.crc32(norm(b).encode()) % 7 == doy % 7
+    paid_raw   = [b for b in loved_raw if norm(b) not in deep or weekly_slot(b)]
+    paid_today = [b for b in todays    if norm(b) not in deep or weekly_slot(b)]
+    if len(paid_raw) < len(loved_raw):
+        skipped = sorted(set(norm(b) for b in loved_raw) - set(norm(b) for b in paid_raw))
+        print(f"paid sources skip {len(skipped)} deep-gated brand(s) today (weekly slot): {skipped}")
+
     found = []
     if "grailed" in SOURCES:              found += scrape_grailed(todays, loved)      # Grailed Algolia (no Apify)
-    if "therealreal" in SOURCES and FIRE: found += scrape_trr(loved, loved_raw)       # TRR GraphQL via Firecrawl (no Apify)
-    if "ssense" in SOURCES and FIRE:      found += scrape_ssense(todays, loved_raw)
+    if "therealreal" in SOURCES and FIRE: found += scrape_trr(loved, paid_raw)        # TRR GraphQL via Firecrawl (no Apify)
+    if "ssense" in SOURCES and FIRE:      found += scrape_ssense(paid_today, loved_raw)
     print(f"scraped {len(found)} raw items")
 
     rows, seen = filter_new(found, existing, loved)

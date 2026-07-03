@@ -62,14 +62,24 @@ SECTIONS = [("outerwear","outerwear","leather, denim, shearling and tech, ranked
             ("tops","tops + knits","tees, hoodies, knits, shirts"),
             ("footwear","footwear","in-size only, us 13-14 / eu 47-48")]
 
+GATE_MIN_TAPS  = 15    # a brand-x-category combo needs this many decisions before it can be gated
+GATE_MAX_RATE  = 0.10  # smoothed like-rate below this -> gated lane
+GATE_VISION    = 0.70  # gated items need at least this vision score to reach the feed
+GEM_OVERRIDE   = 0.85  # anything scoring this high always shows, from any brand
+PRIOR_TAPS     = 8     # bayesian smoothing anchor so small samples don't over-trigger
+
 def build_for_user(uid, taste, catalog):
     sigs = fetch_all("signals", "url,action,brand,category,reasons,price", f"&user_id=eq.{uid}")
     liked_ids, passed_ids = set(), set()
     liked_brands, passed_brands = Counter(), Counter()
     liked_tags, passed_tags = Counter(), Counter()
     passed_prices = []
+    bc_stat = {}                                  # (brand, category) -> [liked, taps]
     for x in sigs:
+        key = (norm(x.get("brand")), norm(x.get("category")))
+        st = bc_stat.setdefault(key, [0, 0]); st[1] += 1
         if x["action"] == "liked":
+            st[0] += 1
             liked_ids.add(x["url"]); liked_brands[norm(x.get("brand"))] += 1
             for r in x.get("reasons") or []: liked_tags[norm(r)] += 1
         else:
@@ -79,6 +89,17 @@ def build_for_user(uid, taste, catalog):
     soft = None
     if len(passed_prices) >= 4:
         passed_prices.sort(); soft = passed_prices[len(passed_prices)//4]
+
+    # ---- taste lanes: gate brand-x-category combos the signals say he passes on, never whole brands.
+    # Recomputed from live signals every build, so a gated combo reopens by itself once he loves from it.
+    base_rate = len(liked_ids) / max(1, len(sigs)) if sigs else 0.25
+    def smoothed(l, n): return (l + PRIOR_TAPS * base_rate) / (n + PRIOR_TAPS)
+    gated = {k for k, (l, n) in bc_stat.items() if n >= GATE_MIN_TAPS and smoothed(l, n) < GATE_MAX_RATE}
+    # brand-overall deep gate -> the conductor samples these weekly on the PAID sources (grailed stays daily/free)
+    b_stat = {}
+    for (b, _), (l, n) in bc_stat.items():
+        st = b_stat.setdefault(b, [0, 0]); st[0] += l; st[1] += n
+    deep_gated = sorted(b for b, (l, n) in b_stat.items() if b and n >= GATE_MIN_TAPS and smoothed(l, n) < GATE_MAX_RATE)
 
     def adj(it):
         s = float(it.get("base_score") or 0)
@@ -94,9 +115,19 @@ def build_for_user(uid, taste, catalog):
         return round(s, 4)
 
     items = []
+    n_gated_out = 0
     for c in catalog:
         it = dict(c); url = it["url"]
         it["isArchived"] = url in passed_ids; it["isLiked"] = url in liked_ids
+        # gated lane: un-acted items from a gated combo need a strong vision score to surface.
+        # acted items always keep their place (liked/archived tabs are history, not curation).
+        if not it["isArchived"] and not it["isLiked"]:
+            b, c = norm(it.get("brand")), norm(it.get("category"))
+            vis = float(it.get("base_score") or 0)
+            # gate by combo evidence, or by brand-wide evidence when per-category taps are still thin
+            if ((b, c) in gated or b in deep_gated) and vis < min(GATE_VISION, GEM_OVERRIDE):
+                n_gated_out += 1
+                continue
         it["score"] = adj(it); it["firstSeen"] = it.get("first_seen")
         items.append(it)
     latest = max((it.get("firstSeen","") for it in items if not it["isArchived"]), default="")
@@ -132,13 +163,20 @@ def build_for_user(uid, taste, catalog):
             canon = next((it["brand"] for it in catalog if norm(it["brand"]) == b), b)
             loved.append(canon); lset.add(b); promoted.append(canon)
     s = taste.setdefault("signals", {}); s.pop("cooledBrands", None)
+    s["brandLanes"] = {
+        "gatedCombos": sorted(f"{b}|{c}" for b, c in gated),
+        "deepGatedBrands": deep_gated,          # conductor: weekly slot on paid sources, grailed unaffected
+        "gateVision": GATE_VISION, "computedAt": NOW,
+    }
     s["likedBrandTally"] = dict(liked_brands); s["passedBrandTally"] = dict(passed_brands)
     s["lovedStyleTags"] = dict((t,n) for t,n in liked_tags.most_common(60) if is_style(t))
     s["passedStyleTags"] = dict((t,n) for t,n in passed_tags.most_common(60) if is_style(t))
     if soft: s["softPriceCeilingFromPasses"] = soft
     taste.setdefault("brands", {})["loved"] = loved; taste.setdefault("meta", {})["lastUpdated"] = TODAY
     api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
-    print(f"  user {uid[:8]}: {total} to review, {n_liked} liked, {n_arch} archived" + (f" | promoted {promoted}" if promoted else ""))
+    print(f"  user {uid[:8]}: {total} to review, {n_liked} liked, {n_arch} archived | "
+          f"{n_gated_out} gated out (vision<{GATE_VISION}) across {len(gated)} combos, deep-gated brands: {deep_gated}"
+          + (f" | promoted {promoted}" if promoted else ""))
 
 def main():
     catalog = fetch_all("catalog", "url,id,platform,brand,title,category,price,size,condition,image,reasons,base_score,sz,first_seen,last_seen")
