@@ -60,7 +60,7 @@ def is_style(t):
 SECTIONS = [("outerwear","outerwear","leather, denim, shearling and tech, ranked"),
             ("bottoms","bottoms","36-38 only, leather and wide-leg lead"),
             ("tops","tops + knits","tees, hoodies, knits, shirts"),
-            ("footwear","footwear","in-size only, us 13-14 / eu 47-48")]
+            ("footwear","footwear","in-size only, us 14-15 / eu 47-48 (+ balenciaga 46)")]
 
 GATE_MIN_TAPS  = 15    # a brand-x-category combo needs this many decisions before it can be gated
 GATE_MAX_RATE  = 0.10  # smoothed like-rate below this -> gated lane
@@ -114,11 +114,24 @@ def build_for_user(uid, taste, catalog):
         if soft and isinstance(it.get("price"), (int, float)) and it["price"] > soft * 1.5: s -= 0.06
         return round(s, 4)
 
+    # footwear sizes changed 2026-07-03: US 14-15 / EU 47-48 only (13s were taste-training taps,
+    # they never fit). Balenciaga runs oversized -> 46 (and its US-13 normalization) stays in.
+    def foot_ok(it):
+        if it.get("category") != "footwear": return True
+        s = norm(it.get("size") or "")
+        if "balenciaga" in norm(it.get("brand") or ""):
+            return bool(re.search(r"\b(13|13\.5|14|14\.5|15|46|47|48)\b", s))
+        return bool(re.search(r"\b(14|14\.5|15|47|48)\b", s))
+
     items = []
     n_gated_out = 0
+    n_size_retired = 0
     for c in catalog:
         it = dict(c); url = it["url"]
         it["isArchived"] = url in passed_ids; it["isLiked"] = url in liked_ids
+        if not it["isArchived"] and not it["isLiked"] and not foot_ok(it):
+            n_size_retired += 1
+            continue
         # gated lane: un-acted items from a gated combo need a strong vision score to surface.
         # acted items always keep their place (liked/archived tabs are history, not curation).
         if not it["isArchived"] and not it["isLiked"]:
@@ -176,7 +189,8 @@ def build_for_user(uid, taste, catalog):
     taste.setdefault("brands", {})["loved"] = loved; taste.setdefault("meta", {})["lastUpdated"] = TODAY
     api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
     print(f"  user {uid[:8]}: {total} to review, {n_liked} liked, {n_arch} archived | "
-          f"{n_gated_out} gated out (vision<{GATE_VISION}) across {len(gated)} combos, deep-gated brands: {deep_gated}"
+          f"{n_gated_out} gated out (vision<{GATE_VISION}) across {len(gated)} combos, deep-gated brands: {deep_gated} | "
+          f"{n_size_retired} footwear retired by new size rule"
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():

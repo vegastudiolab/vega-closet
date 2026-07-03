@@ -77,11 +77,15 @@ _KEEP = re.compile(r"padded|deconstruct|distress|rivet|asymmetric|cargo|tech|nyl
 def is_blazer(title):
     return bool(_BLZ.search(title or "") and not _KEEP.search(title or ""))
 
-def in_size(cat, s):
+def in_size(cat, s, brand=""):
     s = norm(s)
     if not s: return False
     if cat == "footwear":
-        return bool(re.search(r"\b(13|13\.5|14|47|48)\b", s))
+        # US 14-15 / EU 47-48. US 13 is out (taste-training only, never fit) — EXCEPT Balenciaga,
+        # which runs oversized: a 46 fits, so accept 46 (and its US-normalized 13) for that brand only.
+        if "balenciaga" in norm(brand):
+            return bool(re.search(r"\b(13|13\.5|14|14\.5|15|46|47|48)\b", s))
+        return bool(re.search(r"\b(14|14\.5|15|47|48)\b", s))
     if cat == "bottoms":
         if re.search(r"\b3[45]\b", s): return False                 # never waist 34/35
         return bool(re.search(r"\b(36|37|38|54|56)\b", s) or re.search(r"\b(l|xl|xxl)\b", s))
@@ -132,7 +136,7 @@ def apify_run(actor, inp, memory=1024, wait=280):
 # Grailed via ITS OWN Algolia search API — direct, server-side filtered by designer+size+condition, no proxy, effectively free.
 GRAILED_APP  = "MNRWEFSS2Q"
 GRAILED_KEY  = os.environ.get("GRAILED_KEY", "c89dbaddf15fe70e1941a109bf7c2a3d")   # public search key; self-heals on 403
-GRAILED_SIZES = ["size:l","size:xl","size:xxl","size:36","size:37","size:38","size:13","size:13.5","size:14"]  # in_size() refines
+GRAILED_SIZES = ["size:l","size:xl","size:xxl","size:36","size:37","size:38","size:13","size:14","size:14.5","size:15"]  # size:13 stays for balenciaga (eu46); in_size() refines
 
 def _grailed_refresh_key():
     global GRAILED_KEY
@@ -270,7 +274,7 @@ def scrape_ssense(brands, loved_raw, per_brand=6):
             if not purl: continue
             szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000, return_meta=True) or {}   # json (sizes) + metadata (og:image)
             sizes = " ".join((szdata.get("json") or {}).get("sizesAvailable") or [])
-            if not in_size(cat, sizes): continue
+            if not in_size(cat, sizes, b): continue
             meta = szdata.get("metadata") or {}
             og = meta.get("ogImage") or meta.get("og:image") or ""
             if isinstance(og, list): og = og[0] if og else ""
@@ -332,7 +336,7 @@ def filter_new(found, known, loved):
         if url in known or url in newurls: continue                # only genuinely new
         cat = it["category"]
         if cat not in CATS: continue
-        if not in_size(cat, it.get("size")): continue
+        if not in_size(cat, it.get("size"), it.get("brand")): continue
         if cat == "bottoms" and re.search(r"\b3[45]\b", norm(it.get("size"))): continue
         if is_blazer(it.get("title")): continue
         newurls.add(url)
@@ -425,9 +429,10 @@ def main():
 def size_bucket(it):
     s = norm(it.get("size")); cat = it.get("category","")
     if cat == "footwear":
+        if "15" in s: return "us15"
         if "14" in s: return "us14"
-        if "13" in s: return "us13"
-        if "47" in s or "48" in s or "49" in s: return "eu47-49"
+        if "46" in s or "47" in s or "48" in s: return "eu46-48"
+        if "13" in s: return "eu46-48"          # balenciaga eu46 normalized to us13
         return "other"
     if cat == "bottoms":
         if "38" in s: return "w38"
