@@ -349,6 +349,7 @@
       <button class="sigbtn" id="moreBtn" type="button" title="more" aria-label="more">⋯</button>
       <div class="morepop" id="morePop">
         <button class="sigbtn" id="hidePass" type="button">hide passed</button>
+        <button class="sigbtn" id="clearFeed" type="button">clear feed</button>
         <button class="signout" id="signOut" type="button">sign out</button>
       </div>
     </div>
@@ -829,6 +830,34 @@
     }, LSN);
 
     document.getElementById("hidePass").onclick=function(){ document.body.classList.toggle("hidepassed"); this.classList.toggle("on"); };
+
+    // clear feed: dismiss every unreviewed piece WITHOUT training taste (a clear is "not now",
+    // not "not my style"). Dismissed items come back if a future scan finds them again.
+    let CLEAR_ARMED = null;
+    document.getElementById("clearFeed").onclick = async function(){
+      const ok = document.getElementById("sigok");
+      if (!CLEAR_ARMED){
+        this.textContent = "sure? tap again";
+        CLEAR_ARMED = setTimeout(()=>{ this.textContent="clear feed"; CLEAR_ARMED=null; }, 3500);
+        return;
+      }
+      clearTimeout(CLEAR_ARMED); CLEAR_ARMED = null; this.textContent = "clear feed";
+      const toClear = cards().filter(c => c.dataset.liked==="0" && c.dataset.archived==="0");
+      const urls = toClear.map(c => decodeURIComponent(c.dataset.url||"")).filter(Boolean);
+      if (!urls.length){ ok.textContent = "nothing to clear"; setTimeout(()=>{ ok.textContent=""; },2500); return; }
+      try {
+        const { data: t, error: ge } = await sb.from('taste').select('payload').eq('user_id', userId).single();
+        if (ge) throw ge;
+        const p = t.payload || {}; const s = p.signals = p.signals || {};
+        s.dismissedUrls = [...new Set([...(s.dismissedUrls||[]), ...urls])];
+        const { error: ue } = await sb.from('taste').update({ payload: p }).eq('user_id', userId);
+        if (ue) throw ue;
+        toClear.forEach(c => c.remove());
+        applyFilters();
+        ok.textContent = "cleared "+urls.length+" pieces — they can return on future scans";
+        setTimeout(()=>{ ok.textContent=""; },5000);
+      } catch(e){ console.error(e); ok.textContent = "couldn't clear — try again"; }
+    };
 
     // ---- scan sheet + cancel ----
     let SCAN_IV = null, SCAN_TICK = null;

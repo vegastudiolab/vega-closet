@@ -385,6 +385,21 @@ def main():
     if "ssense" in SOURCES and FIRE:      found += scrape_ssense(paid_today, loved_raw)
     print(f"scraped {len(found)} raw items")
 
+    # dismissed items are hidden, not banned: if a scan finds one again it returns to the feed
+    # (protects against a "clear feed" that swept up something worth seeing)
+    try:
+        st2, t2 = sb("GET", "/rest/v1/taste?select=user_id,payload&limit=1")
+        if st2 == 200 and isinstance(t2, list) and t2:
+            p2 = t2[0].get("payload") or {}; s2 = p2.get("signals") or {}
+            dis = set(s2.get("dismissedUrls") or [])
+            back = dis & {it.get("url") for it in found}
+            if back:
+                s2["dismissedUrls"] = sorted(dis - back); p2["signals"] = s2
+                sb("PATCH", "/rest/v1/taste?user_id=eq." + t2[0]["user_id"], {"payload": p2}, {"Prefer": "return=minimal"})
+                print(f"{len(back)} previously-dismissed item(s) re-found by this scan — restored to the feed")
+    except Exception as e:
+        print("un-dismiss check failed:", e)
+
     rows, seen = filter_new(found, existing, loved)
 
     # ---- top up: keep pulling FRESH grailed brands until we reach the minimum ----
