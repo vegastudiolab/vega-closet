@@ -60,7 +60,8 @@ def is_style(t):
 SECTIONS = [("outerwear","outerwear","leather, denim, shearling and tech, ranked"),
             ("bottoms","bottoms","36-38 only, leather and wide-leg lead"),
             ("tops","tops + knits","tees, hoodies, knits, shirts"),
-            ("footwear","footwear","in-size only, us 14-15 / eu 47-48 (+ balenciaga 46)")]
+            ("footwear","footwear","in-size only, us 14-15 / eu 47-48 (+ balenciaga 46)"),
+            ("accessories","accessories","belts in your waist, plus one-size pieces — from accessories scans")]
 
 GATE_MIN_TAPS  = 15    # a brand-x-category combo needs this many decisions before it can be gated
 GATE_MAX_RATE  = 0.10  # smoothed like-rate below this -> gated lane
