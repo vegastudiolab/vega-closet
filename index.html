@@ -428,6 +428,10 @@
   // Escape everything scraped (titles/brands come from strangers' listings) before it hits innerHTML.
   const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[m]));
   const safeUrl = u => { try { const p = new URL(u); return (p.protocol === "http:" || p.protocol === "https:") ? esc(p.href) : ""; } catch { return ""; } };
+  // running as a home-screen app? then target=_blank spawns iOS's in-app browser, which goes
+  // blank when you leave and return. In that mode we navigate in-container instead (iOS gives a
+  // back bar), and stash the feed view so returning restores it.
+  const PWA = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
 
   // ================= AUTH GATE (email + password) =================
   const authEl   = document.getElementById("auth");
@@ -588,7 +592,7 @@
             <button class="act like" data-act="like" type="button">♥ love</button>
             <button class="act pass" data-act="pass" type="button">✕ pass</button>
           </div>
-          <a class="view" href="${href}" target="_blank" rel="noopener">view on ${plat}</a>
+          <a class="view" href="${href}" target="${PWA ? '_self' : '_blank'}" rel="noopener">view on ${plat}</a>
         </div>
       </div>`;
     }
@@ -775,12 +779,15 @@
 
     // Tap handler: optimistic UI first (identical feel), then persist to Supabase.
     document.getElementById("sections").addEventListener("click", async e=>{
+      // home-screen app: outbound "view on X" navigates in-container (no orphaned blank browser),
+      // so stash the feed view before it unloads and return restores it
+      if (PWA && e.target.closest("a.view")){ saveCtx(); return; }
       // compact grid hides the "view on" link — tapping the photo opens the listing instead
       if (document.body.classList.contains("compact") && !e.target.closest(".act")){
         const iw = e.target.closest(".imgwrap");
         if (iw){
           const u = decodeURIComponent(iw.closest(".card")?.dataset.url || "");
-          if (u) window.open(u, "_blank", "noopener");
+          if (u){ if (PWA){ saveCtx(); location.href = u; } else window.open(u, "_blank", "noopener"); }
           return;
         }
       }
@@ -945,11 +952,8 @@
       cancelBtn.classList.remove("show");
       try{ localStorage.removeItem("vegaCloset.scan"); }catch(e){}
     }
-    function reloadKeepingContext(){
-      // refresh brings in the new feed but keeps filters, search and scroll position
-      try{ sessionStorage.setItem("vegaCloset.restore", JSON.stringify({ view:VIEW, q:SEARCH_Q, y:window.scrollY })); }catch(e){}
-      location.reload();
-    }
+    function saveCtx(){ try{ sessionStorage.setItem("vegaCloset.restore", JSON.stringify({ view:VIEW, q:SEARCH_Q, y:window.scrollY })); }catch(e){} }
+    function reloadKeepingContext(){ saveCtx(); location.reload(); }   // keeps filters, search, scroll across an in-place refresh
     function startFeedPoll(before, t0){
       const ok = document.getElementById("sigok");
       let tries = Math.max(0, Math.floor((Date.now()-t0)/15000));   // resumed scans keep their elapsed budget
