@@ -495,12 +495,15 @@ def main():
         print(f"target {MIN_NEW}: keeping the {'top-scored' if not NO_VISION else 'newest'} {MIN_NEW} of {len(rows)} found")
         rows = rows[:MIN_NEW]
 
+    inserted = 0
     for i in range(0, len(rows), 500):
         part = rows[i:i+500]
         st, res = sb("POST", "/rest/v1/catalog?on_conflict=url", part, {"Prefer":"resolution=ignore-duplicates,return=minimal"})
         if st not in (200,201,204): print("insert fail", st, str(res)[:200]); break
-        print(f"  inserted {min(i+500,len(rows))}/{len(rows)}")
-    print("CONDUCTOR DONE — new items:", len(rows))
+        inserted += len(part)
+        print(f"  inserted {inserted}/{len(rows)}")
+    if inserted < len(rows): print(f"WARNING: only {inserted} of {len(rows)} stored — see insert fail above")
+    print("CONDUCTOR DONE — new items:", inserted)
 
 def size_bucket(it):
     s = norm(it.get("size")); cat = it.get("category","")
