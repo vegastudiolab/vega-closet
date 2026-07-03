@@ -123,12 +123,18 @@ def build_for_user(uid, taste, catalog):
             return bool(re.search(r"\b(13|13\.5|14|14\.5|15|46|47|48)\b", s))
         return bool(re.search(r"\b(14|14\.5|15|47|48)\b", s))
 
+    # urls Charles cleared without judging (bad scan batches etc.) — hidden from the feed,
+    # NEVER fed into taste learning (a dismissal is "not now", not "not my style")
+    dismissed = set((taste.get("signals", {}) or {}).get("dismissedUrls") or [])
+
     items = []
     n_gated_out = 0
     n_size_retired = 0
     for c in catalog:
         it = dict(c); url = it["url"]
         it["isArchived"] = url in passed_ids; it["isLiked"] = url in liked_ids
+        if not it["isArchived"] and not it["isLiked"] and url in dismissed:
+            continue
         if not it["isArchived"] and not it["isLiked"] and not foot_ok(it):
             n_size_retired += 1
             continue

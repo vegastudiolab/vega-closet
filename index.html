@@ -888,8 +888,12 @@
       const brands = (document.getElementById("scanBrands").value||"").trim();
       const minNew = Math.min(200, Math.max(0, parseInt(document.getElementById("scanMinNew").value||"50",10) || 0));
       const noVision = !document.getElementById("rateToggle").classList.contains("on");
+      // keyword search only exists on grailed — other sources would ignore it and dump
+      // their generic newest, so a query locks the scan to grailed
+      const effSrcs = query ? "grailed" : srcs;
       closeSheet();
-      fireScan({ srcs, cat, query, brands, minNew, noVision });
+      fireScan({ srcs: effSrcs, cat, query, brands, minNew, noVision });
+      if (query && effSrcs !== srcs) document.getElementById("sigok").textContent = "keyword scans search grailed only — scanning grailed";
     }, LSN);
 
     // scanning UI pieces are shared between a fresh scan and one resumed after the app was closed
