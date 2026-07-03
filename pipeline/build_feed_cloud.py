@@ -124,8 +124,9 @@ def build_for_user(uid, taste, catalog):
         if not it["isArchived"] and not it["isLiked"]:
             b, c = norm(it.get("brand")), norm(it.get("category"))
             vis = float(it.get("base_score") or 0)
+            unrated = "unrated" in (it.get("reasons") or [])   # raw-scanned: never judged, never gated
             # gate by combo evidence, or by brand-wide evidence when per-category taps are still thin
-            if ((b, c) in gated or b in deep_gated) and vis < min(GATE_VISION, GEM_OVERRIDE):
+            if not unrated and ((b, c) in gated or b in deep_gated) and vis < min(GATE_VISION, GEM_OVERRIDE):
                 n_gated_out += 1
                 continue
         it["score"] = adj(it); it["firstSeen"] = it.get("first_seen")

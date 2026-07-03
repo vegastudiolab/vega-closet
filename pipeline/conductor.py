@@ -35,6 +35,7 @@ BRANDS_PER_RUN= int(os.environ.get("BRANDS_PER_RUN", "24"))
 MIN_NEW  = int(os.environ.get("MIN_NEW", "0"))   # keep pulling fresh grailed brands until at least this many new (0 = off)
 QUERY    = os.environ.get("QUERY", "").strip()  # optional keyword/style/color search term (passes to Algolia)
 CATEGORY = os.environ.get("CATEGORY", "").strip().lower()  # optional single category: outerwear|tops|bottoms|footwear|accessories
+NO_VISION = os.environ.get("NO_VISION", "").strip().lower() in ("1", "true", "yes")  # raw scan: skip taste rating, tag items "unrated"
 TODAY = date.today().isoformat()
 
 def http(method, url, body=None, headers=None, timeout=120):
@@ -394,7 +395,13 @@ def main():
     print(f"{len(rows)} NEW in-size items after filtering")
 
     # ---- rank each new piece by his EYE, automatically (vision vs the stored rubric) ----
-    if ANTHROPIC_KEY and brief and rows:
+    if NO_VISION and rows:
+        # raw scan: no taste rating. The "unrated" tag also exempts these from the feed's taste lanes,
+        # so a deliberate search for a gated brand can never come back empty.
+        for r in rows:
+            r["reasons"] = (r.get("reasons") or []) + ["unrated"]
+        print(f"raw scan — {len(rows)} new items kept unrated (no vision pass)")
+    elif ANTHROPIC_KEY and brief and rows:
         from concurrent.futures import ThreadPoolExecutor
         def _av(r):
             res = vision_score(r.get("image"), brief)

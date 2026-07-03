@@ -28,6 +28,9 @@ on:
       category:
         description: 'only scan one category: outerwear | tops | bottoms | footwear | accessories'
         default: ''
+      no_vision:
+        description: 'raw scan: skip the taste rating, items come back tagged unrated'
+        default: ''
 
 # never let two runs stomp each other
 concurrency:
@@ -59,6 +62,7 @@ jobs:
           BRANDS:         ${{ github.event.inputs.brands || '' }}
           QUERY:          ${{ github.event.inputs.query || '' }}
           CATEGORY:       ${{ github.event.inputs.category || '' }}
+          NO_VISION:      ${{ github.event.inputs.no_vision || '' }}
         run: python pipeline/conductor.py
 
       - name: rebuild every user's feed
