@@ -34,6 +34,7 @@ MAX_PER_BRAND = int(os.environ.get("MAX_PER_BRAND", "40"))
 BRANDS_PER_RUN= int(os.environ.get("BRANDS_PER_RUN", "24"))
 MIN_NEW  = int(os.environ.get("MIN_NEW", "0"))   # keep pulling fresh grailed brands until at least this many new (0 = off)
 QUERY    = os.environ.get("QUERY", "").strip()  # optional keyword/style/color search term (passes to Algolia)
+CATEGORY = os.environ.get("CATEGORY", "").strip().lower()  # optional single category: outerwear|tops|bottoms|footwear|accessories
 TODAY = date.today().isoformat()
 
 def http(method, url, body=None, headers=None, timeout=120):
@@ -153,6 +154,7 @@ def grailed_algolia(facet, page=0, hpp=100, retried=False, query=""):
 
 def scrape_grailed(brands, loved):
     facet = [["designers.name:" + b for b in brands], GRAILED_SIZES, ["condition:is_new", "condition:is_gently_used"], ["department:menswear"]]
+    if CATEGORY: facet.append(["category:" + CATEGORY])           # grailed's category facet uses our exact five names
     out = []
     for page in range(3):                                         # newest ~300 across his brands in his sizes
         r = grailed_algolia(facet, page=page, hpp=100)
@@ -210,7 +212,8 @@ def trr_graphql(variables):
 def scrape_trr(loved, loved_raw):
     slugs = [s for s in (re.sub(r"[^a-z0-9]+", "-", norm(b)).strip("-") for b in loved_raw) if s]  # loved brands -> TRR designer slugs
     out = []
-    for taxon, cat in TRR_TAXCAT.items():
+    taxcat = {t: c for t, c in TRR_TAXCAT.items() if not CATEGORY or c == CATEGORY}   # category scan -> only matching taxons
+    for taxon, cat in taxcat.items():
         buckets = {"taxonsPermalink": [taxon], "designerSlug": slugs}
         if cat in ("outerwear", "tops"): buckets["clothingSize"] = ["27", "28", "29"]   # L/XL/XXL server-side; bottoms/shoes filtered client-side by in_size()
         after = None
@@ -261,6 +264,7 @@ def scrape_ssense(brands, loved_raw, per_brand=6):
         for p in prods[:per_brand]:
             title = p.get("name",""); cat = infer_cat(title)
             if cat not in CATS: continue
+            if CATEGORY and cat != CATEGORY: continue             # category scan: skip before the pricey product-page scrape
             purl = (p.get("url") or "").split("?")[0]
             if not purl: continue
             szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000, return_meta=True) or {}   # json (sizes) + metadata (og:image)

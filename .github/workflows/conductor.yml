@@ -25,6 +25,9 @@ on:
       query:
         description: 'keyword / style / color to search for (passes to Algolia text search)'
         default: ''
+      category:
+        description: 'only scan one category: outerwear | tops | bottoms | footwear | accessories'
+        default: ''
 
 # never let two runs stomp each other
 concurrency:
@@ -55,6 +58,7 @@ jobs:
           MIN_NEW:        ${{ github.event.inputs.min_new || '0' }}
           BRANDS:         ${{ github.event.inputs.brands || '' }}
           QUERY:          ${{ github.event.inputs.query || '' }}
+          CATEGORY:       ${{ github.event.inputs.category || '' }}
         run: python pipeline/conductor.py
 
       - name: rebuild every user's feed
