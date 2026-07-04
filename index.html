@@ -1292,6 +1292,7 @@
       if (noVision)           rpcParams.p_no_vision = 'true';
       const { data: disp, error } = await sb.rpc('run_conductor', rpcParams);
       if (error){ ok.textContent="couldn't start scan"; scanDone(false); return; }
+      if (disp === "cooldown"){ ok.textContent="you've fired a few scans in a row — give it a couple minutes"; scanDone(false); return; }
       // survives the app being closed mid-scan; boot resumes the wait
       try{ localStorage.setItem("vegaCloset.scan", JSON.stringify({ t0, before, est })); }catch(e){}
 
