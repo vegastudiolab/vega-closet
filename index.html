@@ -364,9 +364,10 @@
   .deck-card { position:absolute; inset:0; margin:auto; max-width:340px; height:min(60vh,440px);
     background:#181816; border:1px solid rgba(236,235,232,0.85); border-radius:0; display:flex; flex-direction:column;
     will-change:transform; user-select:none; -webkit-user-select:none; }
-  @keyframes dealIn { from { opacity:0; transform:translateY(12px) scale(0.96); } to { opacity:1; transform:none; } }
-  .deck-card:not(.behind) { animation:dealIn 280ms ease-out; }
-  .deck-card.behind { transform:translateY(7px) scale(0.97); opacity:0.7; animation:none; }
+  /* stack physics: cards PROMOTE (behind rises to front) instead of re-mounting — no image
+     flash, no ghost blend. Drag disables the transition inline; release restores it. */
+  .deck-card { transition:transform 320ms var(--ease), opacity 320ms var(--ease); }
+  .deck-card.behind { transform:translateY(7px) scale(0.97); opacity:0.7; pointer-events:none; }
   .deck-card .im { flex:1; background-size:cover; background-position:center top; border-bottom:1px solid rgba(236,235,232,0.85);
     background-color:#1e1e1c; }
   .deck-card .nm { font-family:var(--serif); font-size:17px; color:#ECEBE8; padding:10px 12px 4px;
@@ -1441,47 +1442,83 @@
         } catch(e){ console.error(e); DECK = []; }
       }
       const zone = $("deckZone");
-      function cardEl(c){
+      function cardEl(c, num){
         const el = document.createElement("div");
         el.className = "deck-card";
         el.innerHTML = '<div class="im" style="background-image:url(' + safeUrl(c.image) + ')"></div>' +
-          '<div class="nm">' + esc(c.title) + '</div><div class="ey">SPECIMEN ' + String(di + 1).padStart(2, "0") + ' / 40 — [ CALIBRATION ]</div>' +
+          '<div class="nm">' + esc(c.title) + '</div><div class="ey">SPECIMEN ' + String(num).padStart(2, "0") + ' / 40 — [ CALIBRATION ]</div>' +
           '<div class="deck-stamp pass">PASS</div><div class="deck-stamp pull">PULL</div>';
         return el;
       }
-      let cur = null;
-      function dealCard(){
-        zone.querySelectorAll(".deck-card").forEach(e => e.remove());
-        if (di >= DECK.length || swipes >= 40){ return finishDeck(); }
-        if (DECK[di + 1]){ const b = cardEl(DECK[di + 1]); b.classList.add("behind"); zone.appendChild(b); }
-        cur = cardEl(DECK[di]); zone.appendChild(cur);
-        attachDrag(cur);
+      let cur = null, behindEl = null;
+      function hud(){
         $("deckN").textContent = swipes;
         $("deckDone").style.display = swipes >= 24 ? "" : "none";
       }
+      function spawnBehind(idx){
+        if (!DECK[idx]) return null;
+        const el = cardEl(DECK[idx], idx + 1);
+        el.classList.add("behind");
+        el.style.opacity = "0";
+        zone.insertBefore(el, cur || null);                     // always beneath the live card
+        requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = ""; }));
+        return el;
+      }
+      function dealCard(){                                       // first deal only — after that the stack promotes
+        if (di >= DECK.length || swipes >= 40){ return finishDeck(); }
+        cur = cardEl(DECK[di], di + 1); zone.appendChild(cur);
+        attachDrag(cur);
+        behindEl = spawnBehind(di + 1);
+        hud();
+      }
+      function promote(){
+        if (di >= DECK.length || swipes >= 40 || !behindEl){ return finishDeck(); }
+        cur = behindEl;
+        cur.classList.remove("behind");                          // rises to the front — same element, no re-mount
+        cur.style.opacity = "";
+        attachDrag(cur);
+        behindEl = spawnBehind(di + 1);
+        hud();
+      }
       function attachDrag(el){
         let x0 = 0, y0 = 0, dx = 0, dragging = false;
-        el.addEventListener("pointerdown", e => { dragging = true; x0 = e.clientX; y0 = e.clientY; el.setPointerCapture(e.pointerId); });
+        const stamps = { pull: el.querySelector(".deck-stamp.pull"), pass: el.querySelector(".deck-stamp.pass") };
+        el.addEventListener("pointerdown", e => {
+          dragging = true; x0 = e.clientX; y0 = e.clientY;
+          el.style.transition = "none";                          // the finger owns the card
+          el.setPointerCapture(e.pointerId);
+        });
         el.addEventListener("pointermove", e => {
           if (!dragging) return;
           dx = e.clientX - x0;
           const dy = e.clientY - y0;
           el.style.transform = "translate(" + dx + "px," + dy * 0.3 + "px) rotate(" + dx * 0.05 + "deg)";
-          el.querySelector(".deck-stamp.pull").style.opacity = Math.max(0, Math.min(1, dx / 90));
-          el.querySelector(".deck-stamp.pass").style.opacity = Math.max(0, Math.min(1, -dx / 90));
+          stamps.pull.style.opacity = Math.max(0, Math.min(1, dx / 90));
+          stamps.pass.style.opacity = Math.max(0, Math.min(1, -dx / 90));
         });
-        el.addEventListener("pointerup", () => {
+        const release = () => {
           if (!dragging) return; dragging = false;
           if (Math.abs(dx) > 90) commit(dx > 0);
-          else { el.style.transition = "transform 250ms"; el.style.transform = ""; setTimeout(() => el.style.transition = "", 260); }
+          else {
+            el.style.transition = "";                            // base transition springs it home
+            el.style.transform = "";
+            stamps.pull.style.opacity = 0; stamps.pass.style.opacity = 0;
+          }
           dx = 0;
-        });
+        };
+        el.addEventListener("pointerup", release);
+        el.addEventListener("pointercancel", release);
       }
       function commit(loved){
         const c = DECK[di];
-        if (cur){ cur.style.transition = "transform 320ms ease-out, opacity 320ms";
-          cur.style.transform = "translate(" + (loved ? 520 : -520) + "px,-40px) rotate(" + (loved ? 24 : -24) + "deg)";
-          cur.style.opacity = "0"; }
+        const out = cur;
+        if (out){
+          out.style.transition = "transform 340ms ease-out, opacity 340ms ease-out";
+          out.style.transform = "translate(" + (loved ? 520 : -520) + "px,-40px) rotate(" + (loved ? 24 : -24) + "deg)";
+          out.style.opacity = "0";
+          out.style.pointerEvents = "none";
+          setTimeout(() => out.remove(), 400);                   // gone after the flight — never rebuilt
+        }
         swipes++; di++;
         const a = c.attrs || {};
         trec("silhouette", a.silhouette, loved); trec("branding", a.branding, loved); trec("weight", a.weight, loved);
@@ -1499,7 +1536,7 @@
         }
         if (swipes === 40 || di >= DECK.length) return setTimeout(finishDeck, 380);
         if (swipes % 10 === 0) milestone();
-        setTimeout(dealCard, 340);
+        promote();                                  // the stack breathes immediately — no dead gap
       }
       $("deckPass").addEventListener("click", () => cur && commit(false), LSN);
       $("deckPull").addEventListener("click", () => cur && commit(true), LSN);
