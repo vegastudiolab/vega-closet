@@ -48,14 +48,16 @@ def _http(method, url, body=None, headers=None, timeout=90):
     except Exception as e:
         return 0, str(e)
 
-def extract_attrs(anthropic_key, image_url, title=""):
-    """One shared vision look per item. Returns attrs dict or None."""
-    if not (anthropic_key and image_url): return None
+def extract_attrs(anthropic_key, image_url, title="", image_b64=None, media_type="image/jpeg"):
+    """One shared vision look per item (catalog url OR user-uploaded base64). Returns attrs or None."""
+    if not (anthropic_key and (image_url or image_b64)): return None
+    source = ({"type": "base64", "media_type": media_type, "data": image_b64} if image_b64
+              else {"type": "url", "url": image_url})
     st, r = _http("POST", "https://api.anthropic.com/v1/messages",
         {"model": "claude-haiku-4-5-20251001", "max_tokens": 400,
          "tools": [ATTR_TOOL], "tool_choice": {"type": "tool", "name": "record_attributes"},
          "messages": [{"role": "user", "content": [
-             {"type": "image", "source": {"type": "url", "url": image_url}},
+             {"type": "image", "source": source},
              {"type": "text", "text": "Look at this menswear item and record its objective visual attributes. "
                                       "Judge only what you can see — no taste opinions. Title for context: " + (title or "")[:120]}]}]},
         {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01"})
@@ -64,6 +66,31 @@ def extract_attrs(anthropic_key, image_url, title=""):
         if block.get("type") == "tool_use":
             return block.get("input")
     return None
+
+def make_brief_addendum(anthropic_key, uploads_by_bucket):
+    """Turn a user's archive photos (already attribute-extracted) into rubric prose. Returns str or None.
+    APPENDED to any existing visualBrief — never replaces a curated rubric."""
+    if not (anthropic_key and any(uploads_by_bucket.values())): return None
+    sem = {"receipts": "he BOUGHT these (money = strongest signal: fit, fabric, formality baseline)",
+           "rotation": "he OWNS and wears these now (the wardrobe being built around)",
+           "grails":   "he hunted these (proven obsession)",
+           "dreams":   "he aspires to these (direction of travel, statement ceiling — NOT buy-now taste)"}
+    lines = []
+    for b, items in uploads_by_bucket.items():
+        if items:
+            lines.append(sem.get(b, b).upper() + ":\n" + "\n".join("- " + json.dumps(a) for a in items[:20]))
+    st, r = _http("POST", "https://api.anthropic.com/v1/messages",
+        {"model": "claude-sonnet-5", "max_tokens": 700,
+         "messages": [{"role": "user", "content":
+            "You maintain a menswear taste rubric used to score secondhand listings 0-1 by vision. "
+            "From this user's ARCHIVE (attribute summaries of their own photos, grouped by how they relate "
+            "to the pieces), write a compact addendum: LOVED SIGNATURE (silhouettes/materials/palette/moods "
+            "with weights implied by bucket semantics), and ASPIRATION vs BUY-NOW distinction. Plain text, "
+            "<=180 words, no preamble.\n\n" + "\n\n".join(lines)}]},
+        {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01"})
+    if st != 200 or not isinstance(r, dict): return None
+    txt = "".join(b.get("text", "") for b in r.get("content", []) if b.get("type") == "text").strip()
+    return txt or None
 
 # ---- stage-2: personal vision judgment on the visible slice ----
 VFIT_TOOL = {"name": "score", "description": "Score how well this piece fits the taste rubric.",

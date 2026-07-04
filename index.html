@@ -1729,7 +1729,7 @@
         }
         nucStats(swipes + Object.values(archCounts).reduce((a, b) => a + b, 0));
         tile.classList.toggle("filled", archCounts[archBucket] > 0);
-        cEl.textContent = archCounts[archBucket] ? archCounts[archBucket] + " PIECES LODGED — ABSORBED OVERNIGHT" : "tap to add";
+        cEl.textContent = archCounts[archBucket] ? archCounts[archBucket] + " PIECES LODGED — FUEL FOR YOUR NEXT SCAN" : "tap to add";
       }, LSN);
 
       $("fitEnter").addEventListener("click", () => {

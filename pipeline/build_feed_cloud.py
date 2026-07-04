@@ -42,6 +42,17 @@ def api(method, path, body=None, extra=None):
         try: return e.code, json.loads(raw)
         except Exception: return e.code, raw
 
+def api_raw(method, path):
+    """Binary GET (storage downloads)."""
+    r = urllib.request.Request(URL + path, headers={"apikey": SECRET, "Authorization": "Bearer " + SECRET}, method=method)
+    try:
+        with urllib.request.urlopen(r, timeout=60) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, None
+    except Exception:
+        return 0, None
+
 def fetch_all(table, select, extra_qs=""):
     rows = []; start = 0; step = 1000
     while True:
@@ -129,6 +140,53 @@ def build_for_user(uid, taste, catalog):
         st = b_stat.setdefault(b, [0, 0]); st[0] += l; st[1] += n
     deep_gated = sorted(b for b, (l, n) in b_stat.items() if b and n >= GATE_MIN_TAPS and smoothed(l, n) < GATE_MAX_RATE)
 
+    # ---- the archive: digest any new wardrobe uploads RIGHT NOW, so they shape this very build.
+    # Photos -> attributes -> synthetic positive taps (receipts/rotation 3x, grails 2x, dreams 1x)
+    # -> and a rubric addendum for stage-2. No overnight wait: the next scan is the trigger. ----
+    UPLOAD_W = {"receipts": 3, "rotation": 3, "grails": 2, "dreams": 1}
+    up_store = (taste.setdefault("uploads", {"digested": []}))
+    seen_paths = {u["path"] for u in up_store["digested"]}
+    new_uploads = []
+    if ANTHROPIC_KEY:
+        try:
+            st_l, listing = api("POST", "/storage/v1/object/list/wardrobe",
+                                {"prefix": uid, "limit": 500, "sortBy": {"column": "created_at", "order": "asc"}})
+            names = []
+            if st_l == 200 and isinstance(listing, list):
+                # top level lists the bucket folders; walk each
+                for folder in ("receipts", "grails", "dreams", "rotation"):
+                    st_f, objs = api("POST", "/storage/v1/object/list/wardrobe",
+                                     {"prefix": f"{uid}/{folder}", "limit": 200})
+                    if st_f == 200 and isinstance(objs, list):
+                        names += [f"{uid}/{folder}/" + o["name"] for o in objs if o.get("name") and not o["name"].startswith(".")]
+            todo = [n for n in names if n not in seen_paths][:60]    # cost cap per rebuild
+            for path in todo:
+                st_d, raw = api_raw("GET", "/storage/v1/object/wardrobe/" + urllib.parse.quote(path))
+                if st_d != 200 or not raw: continue
+                import base64
+                attrs = taste_model.extract_attrs(ANTHROPIC_KEY, None, image_b64=base64.b64encode(raw).decode())
+                if attrs is None: continue
+                bucket = path.split("/")[1] if "/" in path else "rotation"
+                new_uploads.append({"path": path, "bucket": bucket, "attrs": attrs})
+            if new_uploads:
+                up_store["digested"] += new_uploads
+                print(f"  archive: digested {len(new_uploads)} new upload(s) into the model")
+                by_bucket = {}
+                for u in up_store["digested"]:
+                    by_bucket.setdefault(u["bucket"], []).append(u["attrs"])
+                addendum = taste_model.make_brief_addendum(ANTHROPIC_KEY, by_bucket)
+                if addendum:
+                    vb0 = taste.get("visualBrief")
+                    if isinstance(vb0, dict):
+                        base_txt = vb0.get("brief") or ""
+                        vb0["brief"] = (base_txt.split("\n\n[ ARCHIVE ]")[0] + "\n\n[ ARCHIVE ]\n" + addendum).strip()
+                        vb0["archiveAt"] = NOW
+                    else:
+                        taste["visualBrief"] = {"brief": (str(vb0).split("\n\n[ ARCHIVE ]")[0] + "\n\n[ ARCHIVE ]\n" + addendum).strip()
+                                                if vb0 else "[ ARCHIVE ]\n" + addendum, "archiveAt": NOW}
+        except Exception as e:
+            print("  archive digest failed (continuing):", e)
+
     # ---- stage 1: fit THIS user's taste weights over the shared item attributes ----
     cat_by_url = {c["url"]: c for c in catalog}
     labeled = []
@@ -139,6 +197,11 @@ def build_for_user(uid, taste, catalog):
                 # onboarding deck hid brand + price — those features would learn noise
                 c0 = dict(c0); c0["price"] = None; c0["brand"] = ""
             labeled.append((1 if x["action"] in ("liked", "carted") else 0, c0))
+    # archive uploads join the fit as weighted positives (what you own outweighs what you tap)
+    for u in up_store["digested"]:
+        row = {"attrs": u["attrs"], "brand": "", "price": None, "category": None, "url": "upload:" + u["path"]}
+        for _ in range(UPLOAD_W.get(u["bucket"], 1)):
+            labeled.append((1, row))
     # prior-anchored fit: works at ANY history size — pure house-prior at 0 taps, personal as they grow
     weights, pairs = taste_model.fit_user_weights(labeled, prior=PRIOR)
     brate = taste_model.brand_rates(pairs) if pairs else (lambda b: 0.25)
