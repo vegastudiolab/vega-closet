@@ -6,6 +6,11 @@
 import os, sys, re, json, urllib.request, urllib.error
 from collections import Counter
 from datetime import date, datetime, timezone
+import taste_model
+
+ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+STAGE2_TOP = 60          # personal vision re-ranks only the slice that reaches the top of the feed
+MIN_FIT_TAPS = 300       # below this history size, stage-1 weights aren't trustworthy -> base_score fallback
 
 def _loadenv():
     if os.environ.get("SUPABASE_URL"): return
@@ -122,8 +127,29 @@ def build_for_user(uid, taste, catalog):
         st = b_stat.setdefault(b, [0, 0]); st[0] += l; st[1] += n
     deep_gated = sorted(b for b, (l, n) in b_stat.items() if b and n >= GATE_MIN_TAPS and smoothed(l, n) < GATE_MAX_RATE)
 
+    # ---- stage 1: fit THIS user's taste weights over the shared item attributes ----
+    cat_by_url = {c["url"]: c for c in catalog}
+    labeled = []
+    for x in sigs:
+        c0 = cat_by_url.get(x["url"])
+        if c0 and c0.get("attrs"):
+            labeled.append((1 if x["action"] in ("liked", "carted") else 0, c0))
+    weights, brate = {}, (lambda b: 0.25)
+    if len(labeled) >= MIN_FIT_TAPS:
+        weights, pairs = taste_model.fit_user_weights(labeled)
+        brate = taste_model.brand_rates(pairs)
+        print(f"  stage-1 weights fitted on {len(labeled)} taps ({len(weights)} features)")
+    else:
+        print(f"  only {len(labeled)} attributed taps — stage-1 fallback to base_score")
+
+    def stage1(it):
+        a = it.get("attrs")
+        if not (weights and a): return None
+        return taste_model.predict(weights, taste_model.featurize(a, it.get("brand"), it.get("price"), it.get("category"), brate(it.get("brand"))))
+
     def adj(it):
-        s = float(it.get("base_score") or 0)
+        s1 = it.get("_s1")
+        s = s1 if s1 is not None else float(it.get("base_score") or 0)
         url = it["url"]; b = norm(it.get("brand"))
         if url in carted_ids: s += 0.45
         elif url in liked_ids: s += 0.30
@@ -156,7 +182,6 @@ def build_for_user(uid, taste, catalog):
     dismissed = set((taste.get("signals", {}) or {}).get("dismissedUrls") or [])
 
     items = []
-    n_gated_out = 0
     n_size_retired = 0
     for c in catalog:
         it = dict(c); url = it["url"]
@@ -168,18 +193,65 @@ def build_for_user(uid, taste, catalog):
         if not it["isArchived"] and not it["isLiked"] and not foot_ok(it):
             n_size_retired += 1
             continue
-        # gated lane: un-acted items from a gated combo need a strong vision score to surface.
-        # acted items always keep their place (liked/archived tabs are history, not curation).
-        if not it["isArchived"] and not it["isLiked"]:
-            b, c = norm(it.get("brand")), norm(it.get("category"))
-            vis = float(it.get("base_score") or 0)
-            unrated = "unrated" in (it.get("reasons") or [])   # raw-scanned: never judged, never gated
-            # gate by combo evidence, or by brand-wide evidence when per-category taps are still thin
-            if not unrated and ((b, c) in gated or b in deep_gated) and vis < min(GATE_VISION, GEM_OVERRIDE):
-                n_gated_out += 1
-                continue
+        it["_s1"] = stage1(it)
         it["score"] = adj(it); it["firstSeen"] = it.get("first_seen")
         items.append(it)
+
+    # gated lane: un-acted items from a gated combo/brand must rank in the user's TOP band to
+    # surface (stage-1 percentile — logistic scores aren't on the old 0-1 vision scale). Legacy
+    # items without attributes keep the old absolute vision gate. Unrated raw finds never gate.
+    n_gated_out = 0
+    s1_pool = sorted(it["_s1"] for it in items if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"])
+    gate_thr = s1_pool[int(0.88 * (len(s1_pool) - 1))] if s1_pool else None
+    kept = []
+    for it in items:
+        if not it["isArchived"] and not it["isLiked"] and "unrated" not in (it.get("reasons") or []):
+            b, cc = norm(it.get("brand")), norm(it.get("category"))
+            if (b, cc) in gated or b in deep_gated:
+                v = it["_s1"]
+                passes = (v >= gate_thr) if (v is not None and gate_thr is not None) else (float(it.get("base_score") or 0) >= min(GATE_VISION, GEM_OVERRIDE))
+                if not passes:
+                    n_gated_out += 1
+                    continue
+        kept.append(it)
+    items = kept
+
+    # ---- stage 2: personal vision re-rank of the visible slice. Same judgment quality as the
+    # old per-item pass, but bounded: only the top N un-acted items, and each (user,item) verdict
+    # is cached in user_scores so rebuilds never re-judge. This is what keeps quality vision-grade
+    # while the per-user cost stays flat as the catalog and user count grow. ----
+    brief = taste.get("visualBrief") if isinstance(taste.get("visualBrief"), str) else None
+    n_stage2 = 0
+    if ANTHROPIC_KEY and brief and weights:
+        cache = {r["url"]: (r.get("vfit"), r.get("tags") or []) for r in
+                 fetch_all("user_scores", "url,vfit,tags", f"&user_id=eq.{uid}")}
+        unacted = [it for it in items if not it["isArchived"] and not it["isLiked"] and "unrated" not in (it.get("reasons") or [])]
+        unacted.sort(key=lambda x: -x["score"])
+        top = unacted[:STAGE2_TOP]
+        todo = [it for it in top if it["url"] not in cache]
+        fresh = {}
+        if todo:
+            from concurrent.futures import ThreadPoolExecutor
+            def _vs(it):
+                res = taste_model.vision_fit(ANTHROPIC_KEY, it.get("image"), brief)
+                if res is None:
+                    res = taste_model.vision_fit(ANTHROPIC_KEY, it.get("image"), brief)  # one retry
+                if res is not None: fresh[it["url"]] = res
+            with ThreadPoolExecutor(max_workers=6) as ex:
+                list(ex.map(_vs, todo))
+            if fresh:
+                rows_up = [{"user_id": uid, "url": u, "vfit": round(v, 3), "tags": t} for u, (v, t) in fresh.items()]
+                api("POST", "/rest/v1/user_scores?on_conflict=user_id,url", rows_up,
+                    {"Prefer": "resolution=merge-duplicates,return=minimal"})
+        for it in top:
+            got = fresh.get(it["url"]) or cache.get(it["url"])
+            if not got or got[0] is None: continue
+            vf, vtags = float(got[0]), got[1]
+            it["score"] = round(it["score"] + 0.35 * (vf - 0.5), 4)   # vision nudges the visible ranking
+            if vtags: it["reasons"] = vtags[:5]                        # per-user why-tags (payload copy only)
+            n_stage2 += 1
+    for it in items: it.pop("_s1", None)
+
     latest = max((it.get("firstSeen","") for it in items if not it["isArchived"]), default="")
     for it in items:
         it["isNew"] = (not it["isArchived"]) and bool(latest) and it.get("firstSeen") == latest
@@ -214,6 +286,10 @@ def build_for_user(uid, taste, catalog):
             canon = next((it["brand"] for it in catalog if norm(it["brand"]) == b), b)
             loved.append(canon); lset.add(b); promoted.append(canon)
     s = taste.setdefault("signals", {}); s.pop("cooledBrands", None)
+    # publish stage-1 weights so the conductor can rank scan results the same way
+    if weights:
+        s["tasteWeights"] = {k: round(v, 4) for k, v in weights.items()}
+        s["brandRates"] = {b: round(brate(b), 3) for b in {norm(c0.get("brand")) for c0 in catalog if c0.get("brand")}}
     s["brandLanes"] = {
         "gatedCombos": sorted(f"{b}|{c}" for b, c in gated),
         "deepGatedBrands": deep_gated,          # conductor: weekly slot on paid sources, grailed unaffected
@@ -226,12 +302,12 @@ def build_for_user(uid, taste, catalog):
     taste.setdefault("brands", {})["loved"] = loved; taste.setdefault("meta", {})["lastUpdated"] = TODAY
     api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
     print(f"  user {uid[:8]}: {total} to review, {n_liked} liked, {n_arch} archived | "
-          f"{n_gated_out} gated out (vision<{GATE_VISION}) across {len(gated)} combos, deep-gated brands: {deep_gated} | "
-          f"{n_size_retired} footwear retired by new size rule"
+          f"stage-2 vision on {n_stage2} top items | {n_gated_out} gated out across {len(gated)} combos, "
+          f"deep-gated: {deep_gated} | {n_size_retired} size-retired"
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():
-    catalog = fetch_all("catalog", "url,id,platform,brand,title,category,price,size,condition,image,reasons,base_score,sz,first_seen,last_seen")
+    catalog = fetch_all("catalog", "url,id,platform,brand,title,category,price,size,condition,image,reasons,base_score,sz,first_seen,last_seen,attrs")
     users = fetch_all("taste", "user_id,payload")
     print(f"catalog {len(catalog)} items | {len(users)} user(s)")
     for u in users:

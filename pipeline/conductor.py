@@ -10,6 +10,7 @@
 #        BRANDS_PER_RUN (24)  -> rotates through the loved list to keep runs cheap
 import os, sys, json, time, re, random, urllib.request, urllib.error, urllib.parse
 from datetime import date
+import taste_model
 
 # ---------- config (env, with local .env fallback) ----------
 def _loadenv():
@@ -121,7 +122,7 @@ def season_allocate(rows, n):
     # cap to n with per-category slots so one category can't swallow the whole scan
     season = SEASONS[date.today().month]
     w = SEASON_WEIGHTS[season]
-    rank = lambda r: -((r.get("base_score") or 0) + season_adj(r))
+    rank = lambda r: -((r.get("_s1", r.get("base_score") or 0)) + season_adj(r))   # stage-1 taste score when fitted
     by = {}
     for r in rows: by.setdefault(r.get("category"), []).append(r)
     for lst in by.values(): lst.sort(key=rank)
@@ -297,40 +298,48 @@ def trr_graphql(variables):
         payload = _trr_json(r2 if isinstance(r2, str) else json.dumps(r2))
     return ((payload or {}).get("data") or {}).get("products") if payload else None
 
+def _trr_taxon(taxon, cat, slugs, loved_raw):
+    out = []
+    buckets = {"taxonsPermalink": [taxon], "designerSlug": slugs}
+    if cat in ("outerwear", "tops"): buckets["clothingSize"] = ["27", "28", "29"]   # L/XL/XXL server-side; bottoms/shoes filtered client-side by in_size()
+    after = None
+    for _page in range(2):                                     # newest 2 pages/category = the fresh delta
+        v = {"first": 120, "currency": "USD", "sortBy": "NEWEST", "where": {"buckets": buckets}}
+        if after: v["after"] = after
+        pr = trr_graphql(v)
+        if not pr:
+            print(f"  trr {taxon}: blocked/empty"); break
+        for e in pr.get("edges", []):
+            n = e.get("node") or {}
+            brand = (n.get("brandUnion") or {}).get("name") or ""
+            # TRR leaks womenswear into men's taxons — drop anything whose gender attribute isn't men's
+            gender = " ".join(str(x) for a in (n.get("attributes") or []) if str(a.get("type","")).upper()=="GENDER" for x in (a.get("values") or [])).lower()
+            if gender and ("women" in gender or gender == "female"): continue
+            sizeparts = [str(x) for a in (n.get("attributes") or []) if a.get("type") in ("CLOTHING_SIZE","SHOE_SIZE","MENS_WAIST") for x in (a.get("values") or [])]
+            price = None
+            try: price = (((n.get("price") or {}).get("final") or {}).get("usdCents") or 0) / 100 or None
+            except Exception: pass
+            imgs = n.get("images") or []
+            out.append({"url": (n.get("url") or "").split("?")[0], "id": str(n.get("id") or n.get("sku") or ""),
+                        "platform": "therealreal", "brand": brand_matches(brand, loved_raw) or brand,
+                        "title": n.get("name", ""), "category": cat, "price": price, "size": " ".join(sizeparts),
+                        "condition": n.get("condition") or "gently used",
+                        "image": ((imgs[0].get("url", "") if imgs and isinstance(imgs[0], dict) else "") or "").split("?")[0]})
+        pi = pr.get("pageInfo") or {}
+        after = pi.get("endCursor")
+        if not pi.get("hasNextPage"): break
+    print(f"  trr {taxon}: {len(out)} items")
+    return out
+
 def scrape_trr(loved, loved_raw):
     slugs = [s for s in (re.sub(r"[^a-z0-9]+", "-", norm(b)).strip("-") for b in loved_raw) if s]  # loved brands -> TRR designer slugs
-    out = []
     taxcat = {t: c for t, c in TRR_TAXCAT.items() if not CATEGORY or c == CATEGORY}   # category scan -> only matching taxons
-    for taxon, cat in taxcat.items():
-        buckets = {"taxonsPermalink": [taxon], "designerSlug": slugs}
-        if cat in ("outerwear", "tops"): buckets["clothingSize"] = ["27", "28", "29"]   # L/XL/XXL server-side; bottoms/shoes filtered client-side by in_size()
-        after = None
-        for _page in range(2):                                     # newest 2 pages/category = the fresh delta
-            v = {"first": 120, "currency": "USD", "sortBy": "NEWEST", "where": {"buckets": buckets}}
-            if after: v["after"] = after
-            pr = trr_graphql(v)
-            if not pr:
-                print(f"  trr {taxon}: blocked/empty"); break
-            for e in pr.get("edges", []):
-                n = e.get("node") or {}
-                brand = (n.get("brandUnion") or {}).get("name") or ""
-                # TRR leaks womenswear into men's taxons — drop anything whose gender attribute isn't men's
-                gender = " ".join(str(x) for a in (n.get("attributes") or []) if str(a.get("type","")).upper()=="GENDER" for x in (a.get("values") or [])).lower()
-                if gender and ("women" in gender or gender == "female"): continue
-                sizeparts = [str(x) for a in (n.get("attributes") or []) if a.get("type") in ("CLOTHING_SIZE","SHOE_SIZE","MENS_WAIST") for x in (a.get("values") or [])]
-                price = None
-                try: price = (((n.get("price") or {}).get("final") or {}).get("usdCents") or 0) / 100 or None
-                except Exception: pass
-                imgs = n.get("images") or []
-                out.append({"url": (n.get("url") or "").split("?")[0], "id": str(n.get("id") or n.get("sku") or ""),
-                            "platform": "therealreal", "brand": brand_matches(brand, loved_raw) or brand,
-                            "title": n.get("name", ""), "category": cat, "price": price, "size": " ".join(sizeparts),
-                            "condition": n.get("condition") or "gently used",
-                            "image": ((imgs[0].get("url", "") if imgs and isinstance(imgs[0], dict) else "") or "").split("?")[0]})
-            pi = pr.get("pageInfo") or {}
-            after = pi.get("endCursor")
-            if not pi.get("hasNextPage"): break
-        print(f"  trr {taxon}: {len(out)} cumulative")
+    # the 6 taxons are independent — run them concurrently (each was 30-90s through the stealth proxy)
+    from concurrent.futures import ThreadPoolExecutor
+    out = []
+    with ThreadPoolExecutor(max_workers=max(1, len(taxcat))) as ex:
+        for part in ex.map(lambda tc: _trr_taxon(tc[0], tc[1], slugs, loved_raw), taxcat.items()):
+            out += part
     return out
 
 def firecrawl_scrape(url, schema, proxy="auto", wait=9000, return_meta=False):
@@ -341,23 +350,28 @@ def firecrawl_scrape(url, schema, proxy="auto", wait=9000, return_meta=False):
     data = r.get("data") or {}
     return data if return_meta else data.get("json")   # return_meta -> full data (json + metadata og:image)
 
-def scrape_ssense(brands, loved_raw, per_brand=6):
+def scrape_ssense(brands, loved_raw, existing=None, per_brand=6):
     # SSENSE needs the stealth proxy + a proper JSON Schema, or the extraction comes back empty.
     LIST = {"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{
         "name":{"type":"string"},"price":{"type":"number"},"url":{"type":"string"},"image":{"type":"string"}}}}}}
     SIZE = {"type":"object","properties":{"name":{"type":"string"},
         "sizesAvailable":{"type":"array","items":{"type":"string"}},"image":{"type":"string"}}}
+    existing = existing or set()
     out = []
     for b in brands[:8]:                                          # light pass to control credits
         slug = re.sub(r"[^a-z0-9]+","-",norm(b)).strip("-")
         data = firecrawl_scrape(f"https://www.ssense.com/en-us/men/designers/{slug}", LIST, proxy="stealth", wait=12000)
         prods = (data or {}).get("products") or []
-        for p in prods[:per_brand]:
+        fresh = 0
+        for p in prods:
+            if fresh >= per_brand: break
             title = p.get("name",""); cat = infer_cat(title)
             if cat not in ALLOWED_CATS: continue
             if CATEGORY and cat != CATEGORY: continue             # category scan: skip before the pricey product-page scrape
             purl = (p.get("url") or "").split("?")[0]
             if not purl: continue
+            if purl in existing: continue                         # already cataloged: the per-product stealth scrape was the credit leak
+            fresh += 1
             szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000, return_meta=True) or {}   # json (sizes) + metadata (og:image)
             sizes = " ".join((szdata.get("json") or {}).get("sizesAvailable") or [])
             if not in_size(cat, sizes, b): continue
@@ -486,7 +500,7 @@ def main():
     found = []
     if "grailed" in SOURCES:              found += scrape_grailed(todays, loved)      # Grailed Algolia (no Apify)
     if "therealreal" in SOURCES and FIRE: found += scrape_trr(loved, paid_raw)        # TRR GraphQL via Firecrawl (no Apify)
-    if "ssense" in SOURCES and FIRE:      found += scrape_ssense(paid_today, loved_raw)
+    if "ssense" in SOURCES and FIRE:      found += scrape_ssense(paid_today, loved_raw, existing)
     print(f"scraped {len(found)} raw items")
 
     # dismissed items are hidden, not banned: if a scan finds one again it returns to the feed
@@ -519,39 +533,50 @@ def main():
             print(f"  top-up +{len(more)} -> {len(rows)}/{MIN_NEW} new")
     print(f"{len(rows)} NEW in-size items after filtering")
 
-    # ---- rank each new piece by his EYE, automatically (vision vs the stored rubric) ----
+    # ---- stage 1: ONE shared attribute look per new item. User-agnostic — every user's ranking
+    # becomes arithmetic over these; replaces the old per-user vision pass at scrape time. ----
+    if ANTHROPIC_KEY and rows:
+        from concurrent.futures import ThreadPoolExecutor
+        def _ax(r):
+            a = taste_model.extract_attrs(ANTHROPIC_KEY, r.get("image"), r.get("title") or "")
+            if a is None:
+                a = taste_model.extract_attrs(ANTHROPIC_KEY, r.get("image"), r.get("title") or "")  # one retry
+            if a is not None: r["attrs"] = a
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            list(ex.map(_ax, rows))
+        print(f"stage-1 attributes extracted for {sum(1 for r in rows if r.get('attrs'))}/{len(rows)} new items")
+    elif rows:
+        print("no ANTHROPIC_API_KEY — items stored without attributes (title-based fallback ranking)")
     if NO_VISION and rows:
-        # raw scan: no taste rating. The "unrated" tag also exempts these from the feed's taste lanes,
-        # so a deliberate search for a gated brand can never come back empty.
+        # raw scan: tagged unrated -> exempt from taste lanes, feed shows newest-first
         for r in rows:
             r["reasons"] = (r.get("reasons") or []) + ["unrated"]
-        print(f"raw scan — {len(rows)} new items kept unrated (no vision pass)")
-    elif ANTHROPIC_KEY and brief and rows:
-        from concurrent.futures import ThreadPoolExecutor
-        def _av(r):
-            res = vision_score(r.get("image"), brief)
-            if res:
-                vf, tags = res
-                r["base_score"] = round(min(0.97, max(0.05, 0.15 + 0.80 * vf)), 3)
-                if tags: r["reasons"] = tags
-        with ThreadPoolExecutor(max_workers=6) as ex:
-            list(ex.map(_av, rows))
-        print(f"vision-scored {len(rows)} new items against your visual taste rubric")
-    elif rows and not ANTHROPIC_KEY:
-        print("no ANTHROPIC_API_KEY set — new items keep the title-based base_score")
+        print(f"raw scan — {len(rows)} new items kept unrated (personal ranking skipped)")
+
+    # rank-time personal score (_s1) from the taste weights the feed builder fits and publishes.
+    # NOT stored — base_score stays user-neutral; _s1 is stripped before insert.
+    tw = (payload.get("signals", {}) or {}).get("tasteWeights") or {}
+    brates = (payload.get("signals", {}) or {}).get("brandRates") or {}
+    if tw and not NO_VISION:
+        for r in rows:
+            a = r.get("attrs")
+            if a:
+                br = brates.get((r.get("brand") or "").lower(), 0.25)
+                r["_s1"] = taste_model.predict(tw, taste_model.featurize(a, r.get("brand"), r.get("price"), r.get("category"), br))
 
     # MIN_NEW is a TARGET, not just a floor: the top-up loop pulls brands until we reach it,
-    # and here we cap at exactly N — his best N by taste score, or the newest N on a raw scan.
-    # Under N comes back only when that's all the sources had. (0 = uncapped, daily cron.)
+    # and here we cap at exactly N — his best N by taste, or the newest N on a raw scan.
     if MIN_NEW and len(rows) > MIN_NEW:
         if not NO_VISION and not CATEGORY:
             # general rated scan: seasonal per-category slots stop jacket-domination
             rows = season_allocate(rows, MIN_NEW)
         else:
             if not NO_VISION:
-                rows.sort(key=lambda r: -(r.get("base_score") or 0))
+                rows.sort(key=lambda r: -(r.get("_s1", r.get("base_score") or 0)))
             rows = rows[:MIN_NEW]
         print(f"target {MIN_NEW}: kept {len(rows)} of what was found")
+
+    for r in rows: r.pop("_s1", None)              # rank-time only — never stored
 
     inserted = 0
     for i in range(0, len(rows), 500):
