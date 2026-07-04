@@ -1,6 +1,6 @@
 # vega closet — UI spec for redesign
 
-You are helping redesign a mobile-first personal shopping app called **vega closet**. It is a daily
+You are helping redesign a mobile-first personal shopping app called **TRM**. It is a daily
 menswear feed: an agent scrapes Grailed, The RealReal and SSENSE, filters everything to the owner's
 exact sizes, rates each piece against a learned visual taste model, and presents a scrollable feed
 the owner trains by tapping love / cart / pass. It runs as an iOS home-screen web app (single page,

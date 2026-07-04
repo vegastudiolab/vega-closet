@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #e8e6e4; }
+  </style>
+</helmet>
+<div ref="{{ rootRef }}" style="position: relative; width: 1264px; height: 841px; overflow: hidden; background: #e8e6e4; font-family: 'IBM Plex Mono', monospace;">
+
+  <img src="uploads/Gemini_Generated_Image_tonzzrtonzzrtonz.png" alt="" style="position: absolute; inset: 0; width: 1264px; height: 841px; object-fit: cover; pointer-events: none;">
+
+  <!-- Live UI mapped onto the phone screen -->
+  <div ref="{{ screenRef }}" style="position: absolute; left: 0; top: 0; width: 430px; height: 932px; transform-origin: 0 0; background: #ecebe8; border-radius: 40px; overflow: hidden; color: #101010;">
+
+    <!-- ambient tint so the glass cards have something to frost -->
+    <div style="position: absolute; left: -60px; top: 420px; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle, rgba(222,246,90,0.35), rgba(222,246,90,0) 70%); filter: blur(10px);"></div>
+    <div style="position: absolute; right: -80px; bottom: 60px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(0,0,0,0.08), rgba(0,0,0,0) 70%);"></div>
+
+    <div style="position: relative; display: flex; flex-direction: column; height: 100%; padding: 14px 18px 0; box-sizing: border-box;">
+
+      <!-- status bar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; letter-spacing: 0.08em; color: #333;">
+        <span>9:41</span>
+        <span style="display: flex; align-items: center; gap: 6px;">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>
+          <span>TRM·LINK</span>
+        </span>
+      </div>
+
+      <!-- header -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 14px;">
+        <div style="font-family: 'Cormorant Garamond', serif; font-weight: 500; font-size: 52px; line-height: 0.9; letter-spacing: 0.01em;">TRM</div>
+        <div style="text-align: right; font-size: 9px; letter-spacing: 0.12em; color: #444; line-height: 1.7;">
+          <div>SS26 · 07.04</div>
+          <div>CLIENT: A.MERCIER</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px; border-bottom: 1px solid #101010; padding-bottom: 8px;">
+        <span style="font-size: 9.5px; letter-spacing: 0.34em; color: #101010;">TASTE REFINEMENT MODEL</span>
+        <span style="flex: 1;"></span>
+        <span style="font-size: 9px; letter-spacing: 0.12em; color: #777;">v3.2</span>
+      </div>
+
+      <!-- signal module grid -->
+      <div style="display: grid; grid-template-columns: 1.25fr 1fr; border: 1px solid #101010; margin-top: 12px;">
+        <!-- trim score dial -->
+        <div style="border-right: 1px solid #101010; padding: 12px 10px 8px; display: flex; flex-direction: column; align-items: center;">
+          <div style="position: relative; width: 128px; height: 128px;">
+            <svg width="128" height="128" viewBox="0 0 128 128" style="position: absolute; inset: 0;">
+              <circle cx="64" cy="64" r="56" fill="none" stroke="#101010" stroke-width="1" stroke-dasharray="2 4"></circle>
+              <circle cx="64" cy="64" r="48" fill="none" stroke="var(--acc, #DEF65A)" stroke-width="3" stroke-linecap="round" stroke-dasharray="{{ ringDash }}" transform="rotate(-90 64 64)" style="filter: drop-shadow(0 0 5px var(--acc, #DEF65A));"></circle>
+            </svg>
+            <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+              <div style="font-family: 'Cormorant Garamond', serif; font-size: 38px; font-weight: 500; line-height: 1;">{{ trimScore }}</div>
+              <div style="font-size: 8px; letter-spacing: 0.24em; color: #555; margin-top: 3px;">TRIM SCORE</div>
+            </div>
+          </div>
+          <div style="font-size: 8.5px; letter-spacing: 0.16em; color: #333; margin-top: 8px;">TASTE SIGNAL — STRONG</div>
+        </div>
+        <!-- stat boxes -->
+        <div style="display: flex; flex-direction: column;">
+          <div style="flex: 1; border-bottom: 1px solid #101010; padding: 8px 10px;">
+            <div style="font-size: 8px; letter-spacing: 0.2em; color: #666;">ARCHIVE</div>
+            <div style="font-family: 'Cormorant Garamond', serif; font-size: 24px; line-height: 1.1;">214 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; letter-spacing: 0.14em; color: #555;">PIECES</span></div>
+          </div>
+          <div style="flex: 1; border-bottom: 1px solid #101010; padding: 8px 10px;">
+            <div style="font-size: 8px; letter-spacing: 0.2em; color: #666;">ROTATION</div>
+            <div style="font-family: 'Cormorant Garamond', serif; font-size: 24px; line-height: 1.1;">12 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; letter-spacing: 0.14em; color: #555;">ACTIVE</span></div>
+          </div>
+          <div style="flex: 1; padding: 8px 10px;">
+            <div style="font-size: 8px; letter-spacing: 0.2em; color: #666;">ACCURACY</div>
+            <div style="font-family: 'Cormorant Garamond', serif; font-size: 24px; line-height: 1.1;">96.2<span style="font-size: 15px;">%</span></div>
+          </div>
+        </div>
+        <!-- calibration strip -->
+        <div style="grid-column: 1 / -1; border-top: 1px solid #101010; display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; font-size: 8px; letter-spacing: 0.16em; color: #444;">
+          <span>MODEL CALIBRATED 07.04.26</span>
+          <span style="display: flex; gap: 3px; align-items: center;">
+            <span style="width: 8px; height: 5px; background: var(--acc, #DEF65A); box-shadow: 0 0 4px var(--acc, #DEF65A);"></span>
+            <span style="width: 8px; height: 5px; background: var(--acc, #DEF65A);"></span>
+            <span style="width: 8px; height: 5px; background: var(--acc, #DEF65A);"></span>
+            <span style="width: 8px; height: 5px; background: var(--acc, #DEF65A);"></span>
+            <span style="width: 8px; height: 5px; border: 1px solid #101010; box-sizing: border-box;"></span>
+          </span>
+        </div>
+      </div>
+
+      <!-- daily pull header -->
+      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 14px; margin-bottom: 8px;">
+        <span style="font-size: 11px; letter-spacing: 0.2em; font-weight: 500;">[ DAILY PULL ]</span>
+        <span style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 13px; color: #444;">four pieces, chosen for you</span>
+      </div>
+
+      <!-- glass product cards -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 9px; flex: 1;">
+        <sc-for list="{{ pieces }}" as="p" hint-placeholder-count="4">
+          <div style="border: 1px solid #101010; background: rgba(255,255,255,0.42); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); padding: 8px; display: flex; flex-direction: column; box-shadow: 0 6px 18px rgba(0,0,0,0.05);">
+            <div style="height: 84px; border: 1px solid rgba(16,16,16,0.35); background: repeating-linear-gradient(45deg, rgba(16,16,16,0.05) 0px, rgba(16,16,16,0.05) 5px, rgba(255,255,255,0) 5px, rgba(255,255,255,0) 11px); display: flex; align-items: center; justify-content: center;">
+              <span style="font-size: 8px; letter-spacing: 0.14em; color: #666;">{{ p.shot }}</span>
+            </div>
+            <div style="font-family: 'Cormorant Garamond', serif; font-size: 16px; line-height: 1.15; margin-top: 7px;">{{ p.name }}</div>
+            <div style="display: flex; justify-content: space-between; font-size: 8px; letter-spacing: 0.12em; color: #444; margin-top: 5px;">
+              <span>MATCH {{ p.match }}</span>
+              <span>ROT {{ p.rot }}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px; margin-top: 6px; border-top: 1px solid rgba(16,16,16,0.25); padding-top: 5px;">
+              <span style="width: 5px; height: 5px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 5px var(--acc, #DEF65A);"></span>
+              <span style="font-size: 8px; letter-spacing: 0.2em; font-weight: 500;">MAKES THE CUT</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- bottom nav -->
+      <div style="margin: 10px -18px 0; border-top: 1px solid #101010; box-shadow: 0 -1px 8px rgba(222,246,90,0.55); background: rgba(236,235,232,0.9); display: flex; justify-content: space-around; align-items: center; padding: 12px 0 22px;">
+        <span style="display: flex; align-items: center; gap: 7px; font-size: 10px; letter-spacing: 0.18em; font-weight: 500;">
+          <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>PULL
+        </span>
+        <span style="display: flex; align-items: center; gap: 7px; font-size: 10px; letter-spacing: 0.18em; color: #666;">
+          <span style="width: 7px; height: 7px; border: 1px solid #101010; box-sizing: border-box;"></span>ARCHIVE
+        </span>
+        <span style="display: flex; align-items: center; gap: 7px; font-size: 10px; letter-spacing: 0.18em; color: #666;">✳ SIGNAL</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 1264, &quot;height&quot;: 841 },
+  &quot;trimScore&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 87.4, &quot;min&quot;: 0, &quot;max&quot;: 100, &quot;step&quot;: 0.1, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Signal&quot; },
+  &quot;accent&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#DEF65A&quot;, &quot;options&quot;: [&quot;#DEF65A&quot;, &quot;#C9FF3B&quot;, &quot;#AFFF7A&quot;, &quot;#F2FF66&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; }
+}">
+class Component extends DCLogic {
+  solve(A, b) {
+    const n = A.length;
+    const M = A.map((row, i) => row.concat([b[i]]));
+    for (let col = 0; col < n; col++) {
+      let piv = col;
+      for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+      const tmp = M[col]; M[col] = M[piv]; M[piv] = tmp;
+      for (let r = 0; r < n; r++) {
+        if (r === col) continue;
+        const f = M[r][col] / M[col][col];
+        for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+      }
+    }
+    return M.map((row, i) => row[n] / row[i]);
+  }
+
+  matrixFor(w, h, d) {
+    const src = [[0, 0], [w, 0], [w, h], [0, h]];
+    const A = [], b = [];
+    for (let i = 0; i < 4; i++) {
+      const x = src[i][0], y = src[i][1], X = d[i][0], Y = d[i][1];
+      A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]); b.push(X);
+      A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]); b.push(Y);
+    }
+    const c = this.solve(A, b);
+    return 'matrix3d(' + [c[0], c[3], 0, c[6], c[1], c[4], 0, c[7], 0, 0, 1, 0, c[2], c[5], 0, 1].join(',') + ')';
+  }
+
+  apply() {
+    if (this.screenEl) {
+      // dest corners on the 1264x841 photo: TL, TR, BR, BL of the phone screen
+      const pts = [[555, 50], [853, 80], [670, 715], [366, 647]];
+      this.screenEl.style.transform = this.matrixFor(430, 932, pts);
+    }
+    if (this.rootEl) {
+      this.rootEl.style.setProperty('--acc', this.props.accent ?? '#DEF65A');
+    }
+  }
+
+  componentDidMount() { this.apply(); }
+  componentDidUpdate() { this.apply(); }
+
+  renderVals() {
+    const score = this.props.trimScore ?? 87.4;
+    const circ = 2 * Math.PI * 48;
+    return {
+      screenRef: (el) => { this.screenEl = el; this.apply(); },
+      rootRef: (el) => { this.rootEl = el; this.apply(); },
+      trimScore: score.toFixed(1),
+      ringDash: (circ * score / 100).toFixed(1) + ' ' + circ.toFixed(1),
+      pieces: [
+        { name: 'Structured Wool Overcoat', shot: '[ coat — front ]', match: '98.2%', rot: '03' },
+        { name: 'Silver Leather Loafer', shot: '[ loafer — profile ]', match: '96.7%', rot: '07' },
+        { name: 'Silk Scarf, Ivory', shot: '[ scarf — drape ]', match: '94.1%', rot: '01' },
+        { name: 'Wide Trouser, Charcoal', shot: '[ trouser — pleat ]', match: '91.8%', rot: '05' }
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

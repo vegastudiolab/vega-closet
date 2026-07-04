@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="6cae4794-acf9-4694-bb43-ada33f4728c1"></script>
+
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <style>/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("a1c46a69-6d63-442a-98ef-306a09c54d91") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("d27211e8-1841-4bd1-822e-ab07edef8f92") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("d6ffe360-904f-4fa2-a8b8-c2f482b236ec") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("438df4ca-0504-490c-a6ee-16aa1bb1a629") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("d2d3120a-5873-4a25-8590-c2fdbd62925b") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("a1c46a69-6d63-442a-98ef-306a09c54d91") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("d27211e8-1841-4bd1-822e-ab07edef8f92") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("d6ffe360-904f-4fa2-a8b8-c2f482b236ec") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("438df4ca-0504-490c-a6ee-16aa1bb1a629") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url("d2d3120a-5873-4a25-8590-c2fdbd62925b") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("54fa5b28-26e5-425c-bfcb-110aed8feb14") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("d30f9a94-cd87-48b1-a0f1-f1ec5e121c0d") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("3fd90eb6-dc88-4a9f-bb2a-749656f056be") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("d399999a-6dc0-4e8a-9511-91fbaa700961") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("98a25d47-9998-4990-b52b-b4d4eee3dcba") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("54fa5b28-26e5-425c-bfcb-110aed8feb14") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("d30f9a94-cd87-48b1-a0f1-f1ec5e121c0d") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("3fd90eb6-dc88-4a9f-bb2a-749656f056be") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("d399999a-6dc0-4e8a-9511-91fbaa700961") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("98a25d47-9998-4990-b52b-b4d4eee3dcba") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("54fa5b28-26e5-425c-bfcb-110aed8feb14") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("d30f9a94-cd87-48b1-a0f1-f1ec5e121c0d") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("3fd90eb6-dc88-4a9f-bb2a-749656f056be") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("d399999a-6dc0-4e8a-9511-91fbaa700961") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("98a25d47-9998-4990-b52b-b4d4eee3dcba") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("b3d0903d-29ea-440b-9211-1d4bd3a0f21a") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("854cf0ef-2a80-4b15-a577-0a42fc82304e") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("44387a44-6c19-4c43-a392-32862ef0fe83") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("5939b270-ef86-4a72-bf3e-e91dbd073823") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("69d7f475-9f31-4616-9f62-ce5e9dc729d7") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("a566588b-36b4-4f43-ac3b-266abdec0751") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("c031fbab-61ef-48e8-8010-a24260ffaf57") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("2d3fd94f-9799-4b81-842b-4dfc32c1b9d0") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("83291165-4074-4ebe-ba2b-e5e1407aa1fc") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("74ef1331-83cb-4b0a-9f99-4a61ad018b29") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Jacquard 24';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("e87f950c-f6c5-4112-b98f-481e9160fad6") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Jacquard 24';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("825b665a-d901-4e94-951f-a4a693d78a28") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+  <style>
+    @font-face { font-family: 'Minecraft'; src: url("2b61940b-5d3e-48dc-8807-10d03e27333b") format('truetype'); }
+    html, body { margin: 0; padding: 0; background: #DDDBD6; }
+    ::placeholder { color: #9a988f; }
+  </style>
+</helmet>
+<section ref="{{ rootRef }}" style="display: flex; gap: 56px; padding: 56px; align-items: flex-start; flex-wrap: wrap; font-family: 'IBM Plex Mono', monospace; background: #DDDBD6;">
+
+  <!-- logo type test — Minecraft.ttf -->
+  <div id="logotest" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+    <div style="font-size: 11px; letter-spacing: 0.18em; color: #77756e;">LOGO TEST — MINECRAFT.TTF</div>
+    <div style="display: flex; gap: 24px;">
+      <div style="border: 1px solid #101010; background: var(--bg, #ECEBE8); padding: 22px 28px; display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 9px; letter-spacing: 0.24em; color: #666;">REGULAR</span>
+        <span style="font-family: 'Minecraft', monospace; font-size: 52px; line-height: 1; color: #101010;">TRM</span>
+      </div>
+      <div style="border: 1px solid #101010; background: var(--bg, #ECEBE8); padding: 22px 28px; display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 9px; letter-spacing: 0.24em; color: #666;">ITALIC (SKEW −8°)</span>
+        <span style="font-family: 'Minecraft', monospace; font-size: 52px; line-height: 1; color: #101010; transform: skewX(-8deg); transform-origin: left bottom; display: inline-block;">TRM</span>
+      </div>
+      <div style="border: 1px solid #101010; background: var(--bg, #ECEBE8); padding: 22px 28px; display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 9px; letter-spacing: 0.24em; color: #666;">ITALIC (FONT-STYLE, SYNTHESIZED)</span>
+        <span style="font-family: 'Minecraft', monospace; font-style: italic; font-size: 52px; line-height: 1; color: #101010;">TRM</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= screen 1 — sign in ================= -->
+  <div id="s1" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 11px; letter-spacing: 0.18em; color: #77756e;">S1 — SIGN IN</div>
+    <div data-screen-label="s1 sign in" style="position: relative; width: 430px; height: 932px; overflow: hidden; background: var(--bg, #ECEBE8); color: #101010; border: 1px solid #101010;">
+      <div style="position: absolute; inset: 0; background: var(--grad, none); pointer-events: none;"></div>
+      <div style="position: absolute; inset: 0; opacity: var(--gridop, 0.5); background-image: linear-gradient(rgba(16,16,16,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16,16,16,0.05) 1px, transparent 1px); background-size: 43px 43px; pointer-events: none;"></div>
+      <div style="position: relative; display: flex; justify-content: space-between; padding: 16px 20px 0; font-size: 11px; letter-spacing: 0.08em; color: #333;">
+        <span>9:41</span>
+        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>TRM·LINK</span>
+      </div>
+      <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 26px;">
+        <div style="width: 100%; border: 1px solid #101010; background: rgba(255,255,255,0.5); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 26px 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.06);">
+          <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+            <div style="font-family: 'Minecraft', monospace; font-weight: 400; font-size: 38px; line-height: 0.9; transform: skewX(-8deg); transform-origin: left bottom;">TRM</div>
+            <div style="font-size: 9px; letter-spacing: 0.18em; color: #555; padding-bottom: 4px;">YOUR FEED</div>
+          </div>
+          <div style="border-bottom: 1px solid #101010; margin-top: 12px;"></div>
+          <div style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 23px; line-height: 1.3; color: #333; margin-top: 18px;">trim the noise, shop your taste.</div>
+          <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 16px;">
+            <input placeholder="you@email.com" style="background: rgba(255,255,255,0.6); border: 1px solid #101010; border-radius: 0; padding: 13px 14px; color: #101010; font-family: 'IBM Plex Mono', monospace; font-size: 13px; outline: none;">
+            <input type="password" placeholder="password" style="background: rgba(255,255,255,0.6); border: 1px solid #101010; border-radius: 0; padding: 13px 14px; color: #101010; font-family: 'IBM Plex Mono', monospace; font-size: 13px; outline: none;">
+          </div>
+          <div style="margin-top: 14px; background: var(--acc, #DEF65A); border: 1px solid #101010; color: #101010; font-weight: 500; font-size: 12px; letter-spacing: 0.22em; text-align: center; padding: 14px; box-shadow: 0 0 16px rgba(222,246,90,0.55); cursor: pointer;">SIGN IN</div>
+          <div style="text-align: center; margin-top: 14px; font-size: 11px; letter-spacing: 0.1em; color: #555; text-decoration: underline; cursor: pointer;">forgot password?</div>
+          <div style="margin-top: 14px; font-size: 11px; letter-spacing: 0.04em; color: #2E7D4F; line-height: 1.6;">reset link sent — check your email and open it on this device.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= screen 1b — set new password ================= -->
+  <div id="s1b" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 11px; letter-spacing: 0.18em; color: #77756e;">S1B — SET NEW PASSWORD</div>
+    <div data-screen-label="s1b set new password" style="position: relative; width: 430px; height: 932px; overflow: hidden; background: var(--bg, #ECEBE8); color: #101010; border: 1px solid #101010;">
+      <div style="position: absolute; inset: 0; background: var(--grad, none); pointer-events: none;"></div>
+      <div style="position: absolute; inset: 0; opacity: var(--gridop, 0.5); background-image: linear-gradient(rgba(16,16,16,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16,16,16,0.05) 1px, transparent 1px); background-size: 43px 43px; pointer-events: none;"></div>
+      <div style="position: relative; display: flex; justify-content: space-between; padding: 16px 20px 0; font-size: 11px; letter-spacing: 0.08em; color: #333;">
+        <span>9:41</span>
+        <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>TRM·LINK</span>
+      </div>
+      <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 26px;">
+        <div style="width: 100%; border: 1px solid #101010; background: rgba(255,255,255,0.5); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 26px 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.06);">
+          <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+            <div style="font-family: 'Minecraft', monospace; font-weight: 400; font-size: 38px; line-height: 0.9; transform: skewX(-8deg); transform-origin: left bottom;">TRM</div>
+            <div style="font-size: 9px; letter-spacing: 0.18em; color: #555; padding-bottom: 4px;">YOUR FEED</div>
+          </div>
+          <div style="border-bottom: 1px solid #101010; margin-top: 12px;"></div>
+          <div style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 19px; color: #333; margin-top: 18px;">pick a new password for your closet.</div>
+          <input type="password" placeholder="new password (8+ characters)" style="width: 100%; box-sizing: border-box; margin-top: 16px; background: rgba(255,255,255,0.6); border: 1px solid #101010; border-radius: 0; padding: 13px 14px; color: #101010; font-family: 'IBM Plex Mono', monospace; font-size: 13px; outline: none;">
+          <div style="margin-top: 14px; background: var(--acc, #DEF65A); border: 1px solid #101010; color: #101010; font-weight: 500; font-size: 12px; letter-spacing: 0.22em; text-align: center; padding: 14px; box-shadow: 0 0 16px rgba(222,246,90,0.55); cursor: pointer;">SAVE NEW PASSWORD</div>
+          <div style="margin-top: 14px; font-size: 11px; color: #8A6A00;">use at least 8 characters.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= screen 2 — the feed (full cards) ================= -->
+  <div id="s2" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 11px; letter-spacing: 0.18em; color: #77756e;">S2 — FEED · FULL CARDS</div>
+    <div data-screen-label="s2 feed full" style="position: relative; width: 430px; height: 932px; overflow: hidden; background: var(--bg, #ECEBE8); color: #101010; border: 1px solid #101010;">
+      <div style="position: absolute; inset: 0; background: var(--grad, none); pointer-events: none;"></div>
+      <div style="position: absolute; inset: 0; opacity: var(--gridop, 0.5); background-image: linear-gradient(rgba(16,16,16,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16,16,16,0.05) 1px, transparent 1px); background-size: 43px 43px; pointer-events: none;"></div>
+      <div style="position: relative; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 16px 18px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.08em; color: #333;">
+          <span>9:41</span>
+          <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>TRM·LINK</span>
+        </div>
+        <!-- header -->
+        <div style="margin: 12px -18px 0; border-top: 1px solid #101010; border-bottom: 1px solid #101010; position: relative;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 12px 26px 10px; border-bottom: 1px solid #101010;">
+            <div style="font-family: 'Minecraft', monospace; font-weight: 400; font-size: 33px; line-height: 0.9; transform: skewX(-8deg); transform-origin: left bottom;">TRM</div>
+            <div style="text-align: right; font-size: 10px; line-height: 1.9; color: #555;">
+              <div><b style="color: #101010;">364</b> SHOWN OF <b style="color: #101010;">4839</b> TRACKED</div>
+              <div>FEED UPDATED <b style="color: #101010;">2H</b> AGO</div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 26px;">
+            <span style="font-size: 9px; letter-spacing: 0.26em;">YOUR FEED · 2026-07-04</span>
+            <span style="width: 8px; height: 8px; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>
+          </div>
+        </div>
+        <!-- note strip -->
+        <div style="display: flex; align-items: center; gap: 9px; margin-top: 10px; border: 1px solid #101010; border-left: 4px solid var(--acc, #DEF65A); background: rgba(255,255,255,0.5); padding: 8px 10px;">
+          <span style="font-size: 10px; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">364 new to review, 1035 liked, 3357 archived. one filter bar: show (feed / liked / archived…</span>
+          <span style="font-size: 10px; color: #888;">✕</span>
+        </div>
+        <!-- show row -->
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px;">
+          <span style="font-size: 9px; letter-spacing: 0.2em; color: #666;">SHOW</span>
+          <span style="border: 1px solid #101010; background: var(--acc, #DEF65A); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">FEED <span style="opacity: 0.65;">364</span></span>
+          <span style="border: 1px solid #101010; background: rgba(255,255,255,0.5); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">LIKED <span style="opacity: 0.65;">1040</span></span>
+          <span style="border: 1px solid #101010; background: rgba(255,255,255,0.5); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">CART <span style="opacity: 0.65;">4</span></span>
+          <span style="flex: 1;"></span>
+          <span style="border: 1px solid #101010; background: #101010; color: #ECEBE8; padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">FILTERS ⌄</span>
+        </div>
+        <!-- search row -->
+        <div style="display: flex; gap: 8px; margin-top: 8px;">
+          <input placeholder="search brand, title, style tag…" style="flex: 1; background: rgba(255,255,255,0.6); border: 1px solid #101010; border-radius: 0; padding: 10px 12px; color: #101010; font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none;">
+          <span style="width: 37px; border: 1px solid #101010; background: rgba(255,255,255,0.5); display: flex; align-items: center; justify-content: center; font-size: 14px;">⊞</span>
+        </div>
+        <!-- section head -->
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 14px;">
+          <span style="font-family: 'Cormorant Garamond', serif; font-size: 25px;">outerwear</span>
+          <span style="font-size: 11px; font-weight: 500; background: var(--acc, #DEF65A); padding: 1px 6px; border: 1px solid #101010;">38</span>
+          <span style="font-size: 9px; letter-spacing: 0.08em; color: #666;">LEATHER, DENIM, SHEARLING AND TECH, RANKED</span>
+        </div>
+        <!-- full card — loved state -->
+        <div style="margin-top: 10px; border: 1px solid #101010; background: rgba(255,255,255,0.5); box-shadow: 0 0 0 2px var(--acc, #DEF65A), 0 0 14px rgba(222,246,90,0.45);">
+          <div style="position: relative; height: 240px; border-bottom: 1px solid #101010; background: repeating-linear-gradient(45deg, rgba(16,16,16,0.05) 0px, rgba(16,16,16,0.05) 5px, rgba(255,255,255,0) 5px, rgba(255,255,255,0) 11px); display: flex; align-items: center; justify-content: center;">
+            <span style="font-size: 9px; letter-spacing: 0.14em; color: #666;">[ leather jacket — front ]</span>
+            <span style="position: absolute; top: 8px; left: 8px; background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 9px; letter-spacing: 0.14em; padding: 2px 7px;">NEW</span>
+          </div>
+          <div style="padding: 10px 12px;">
+            <div style="font-size: 10px; letter-spacing: 0.14em; color: #555;">RICK OWENS · GRAILED</div>
+            <div style="font-family: 'Cormorant Garamond', serif; font-size: 19px; margin-top: 3px;">stooges leather jacket, black</div>
+            <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 5px;">
+              <span style="font-size: 15px; font-weight: 500;">$495</span>
+              <span style="font-size: 11px; color: #888; text-decoration: line-through;">$760</span>
+              <span style="font-size: 10px; color: #2E7D4F;">35% off</span>
+            </div>
+            <div style="display: flex; gap: 5px; margin-top: 7px;">
+              <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 2px 7px;">SIZE XL</span>
+              <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 2px 7px;">GENTLY USED</span>
+              <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 2px 7px;">OUTERWEAR</span>
+            </div>
+            <div style="display: flex; gap: 5px; margin-top: 6px;">
+              <span style="background: rgba(222,246,90,0.35); border: 1px solid rgba(16,16,16,0.25); font-size: 8.5px; padding: 2px 6px;">leather</span>
+              <span style="background: rgba(222,246,90,0.35); border: 1px solid rgba(16,16,16,0.25); font-size: 8.5px; padding: 2px 6px;">boxy-volume</span>
+              <span style="background: rgba(222,246,90,0.35); border: 1px solid rgba(16,16,16,0.25); font-size: 8.5px; padding: 2px 6px;">black</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 9px;">
+              <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; text-align: center; font-size: 10px; letter-spacing: 0.12em; padding: 8px 0;">♥ LOVE</span>
+              <span style="background: rgba(255,255,255,0.6); border: 1px solid #101010; text-align: center; font-size: 10px; letter-spacing: 0.12em; padding: 8px 0;">+ CART</span>
+              <span style="background: rgba(255,255,255,0.6); border: 1px solid #101010; text-align: center; font-size: 10px; letter-spacing: 0.12em; padding: 8px 0;">✕ PASS</span>
+            </div>
+          </div>
+          <div style="border-top: 1px solid #101010; background: #101010; color: var(--acc, #DEF65A); text-align: center; font-size: 10px; letter-spacing: 0.2em; padding: 10px;">VIEW ON GRAILED →</div>
+        </div>
+        <!-- full card — warning flag, neutral state (clipped) -->
+        <div style="margin-top: 12px; border: 1px solid #101010; background: rgba(255,255,255,0.5);">
+          <div style="position: relative; height: 150px; border-bottom: 1px solid #101010; background: repeating-linear-gradient(45deg, rgba(16,16,16,0.05) 0px, rgba(16,16,16,0.05) 5px, rgba(255,255,255,0) 5px, rgba(255,255,255,0) 11px); display: flex; align-items: center; justify-content: center;">
+            <span style="font-size: 9px; letter-spacing: 0.14em; color: #666;">[ shearling coat — front ]</span>
+            <span style="position: absolute; left: 0; right: 0; bottom: 0; background: #E8C24A; border-top: 1px solid #101010; font-size: 9px; letter-spacing: 0.16em; text-align: center; padding: 3px 0;">CONFIRM SIZE</span>
+          </div>
+          <div style="padding: 10px 12px 14px;">
+            <div style="font-size: 10px; letter-spacing: 0.14em; color: #555;">ACNE STUDIOS · THE REALREAL</div>
+            <div style="font-family: 'Cormorant Garamond', serif; font-size: 19px; margin-top: 3px;">velocite shearling coat</div>
+          </div>
+        </div>
+      </div>
+      <!-- bottom bar -->
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; border-top: 1px solid #101010; background: rgba(236,235,232,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 11px 16px 22px;">
+          <span style="font-size: 10px; letter-spacing: 0.06em; color: #444;">♥ <b style="color: #101010;">1040</b> · CART <b style="color: #101010;">4</b> · ✕ <b style="color: #101010;">3412</b></span>
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 10px; letter-spacing: 0.14em; padding: 7px 12px; white-space: nowrap; flex-shrink: 0;">SCAN ALL</span>
+            <span style="border: 1px solid #101010; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 15px; background: rgba(255,255,255,0.5);">⊕</span>
+            <span style="border: 1px solid #101010; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 13px; background: rgba(255,255,255,0.5);">⋯</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= screen 2b — compact grid + expanded filters ================= -->
+  <div id="s2b" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 11px; letter-spacing: 0.18em; color: #77756e;">S2B — COMPACT GRID · FILTERS OPEN</div>
+    <div data-screen-label="s2b compact grid" style="position: relative; width: 430px; height: 932px; overflow: hidden; background: var(--bg, #ECEBE8); color: #101010; border: 1px solid #101010;">
+      <div style="position: absolute; inset: 0; background: var(--grad, none); pointer-events: none;"></div>
+      <div style="position: absolute; inset: 0; opacity: var(--gridop, 0.5); background-image: linear-gradient(rgba(16,16,16,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16,16,16,0.05) 1px, transparent 1px); background-size: 43px 43px; pointer-events: none;"></div>
+      <div style="position: relative; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 16px 18px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.08em; color: #333;">
+          <span>9:41</span>
+          <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>TRM·LINK</span>
+        </div>
+        <div style="margin: 12px -18px 0; border-top: 1px solid #101010; border-bottom: 1px solid #101010; position: relative;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 12px 26px 10px; border-bottom: 1px solid #101010;">
+            <div style="font-family: 'Minecraft', monospace; font-weight: 400; font-size: 33px; line-height: 0.9; transform: skewX(-8deg); transform-origin: left bottom;">TRM</div>
+            <div style="text-align: right; font-size: 10px; line-height: 1.9; color: #555;">
+              <div><b style="color: #101010;">364</b> SHOWN OF <b style="color: #101010;">4839</b> TRACKED</div>
+              <div>FEED UPDATED <b style="color: #101010;">2H</b> AGO</div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 26px;">
+            <span style="font-size: 9px; letter-spacing: 0.26em;">YOUR FEED · 2026-07-04</span>
+            <span style="width: 8px; height: 8px; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>
+          </div>
+        </div>
+        <!-- show row with active filter count -->
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px;">
+          <span style="font-size: 9px; letter-spacing: 0.2em; color: #666;">SHOW</span>
+          <span style="border: 1px solid #101010; background: var(--acc, #DEF65A); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">FEED <span style="opacity: 0.65;">364</span></span>
+          <span style="border: 1px solid #101010; background: rgba(255,255,255,0.5); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">LIKED <span style="opacity: 0.65;">1040</span></span>
+          <span style="border: 1px solid #101010; background: rgba(255,255,255,0.5); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">ALL <span style="opacity: 0.65;">4839</span></span>
+          <span style="flex: 1;"></span>
+          <span style="border: 1px solid #101010; background: #101010; color: #ECEBE8; padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">FILTERS · 2 ⌃</span>
+        </div>
+        <!-- expanded filter rows -->
+        <div style="border: 1px solid #101010; background: rgba(255,255,255,0.45); margin-top: 8px; padding: 9px 10px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <span style="font-size: 8px; letter-spacing: 0.2em; color: #888; width: 58px;">CATEGORY</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">ALL</span>
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">OUTERWEAR</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">TOPS</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">PANTS</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">SHOES</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <span style="font-size: 8px; letter-spacing: 0.2em; color: #888; width: 58px;">SIZE</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">ALL</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">L</span>
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">XL</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">XXL</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">W 36</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">US 14</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <span style="font-size: 8px; letter-spacing: 0.2em; color: #888; width: 58px;">PRICE</span>
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">ALL</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">UNDER $200</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">$200–500</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">$500–1K</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <span style="font-size: 8px; letter-spacing: 0.2em; color: #888; width: 58px;">SOURCE</span>
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">ALL</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">GRAILED</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">THE REALREAL</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">SSENSE</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <span style="font-size: 8px; letter-spacing: 0.2em; color: #888; width: 58px;">SORT</span>
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">RELEVANCE</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">NEWEST ACTION</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">PRICE ↑</span>
+            <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0;">PRICE ↓</span>
+          </div>
+        </div>
+        <!-- search + toggle (full-cards glyph) -->
+        <div style="display: flex; gap: 8px; margin-top: 8px;">
+          <input placeholder="search brand, title, style tag…" style="flex: 1; background: rgba(255,255,255,0.6); border: 1px solid #101010; border-radius: 0; padding: 10px 12px; color: #101010; font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none;">
+          <span style="width: 37px; border: 1px solid #101010; background: var(--acc, #DEF65A); display: flex; align-items: center; justify-content: center; font-size: 14px;">▤</span>
+        </div>
+        <!-- compact grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;">
+          <sc-for list="{{ compact }}" as="c" hint-placeholder-count="4">
+            <div style="border: 1px solid #101010; background: rgba(255,255,255,0.5);">
+              <div style="height: 120px; border-bottom: 1px solid #101010; background: repeating-linear-gradient(45deg, rgba(16,16,16,0.05) 0px, rgba(16,16,16,0.05) 5px, rgba(255,255,255,0) 5px, rgba(255,255,255,0) 11px); display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 8.5px; letter-spacing: 0.12em; color: #666;">{{ c.shot }}</span>
+              </div>
+              <div style="padding: 8px 9px 9px;">
+                <div style="font-size: 9px; letter-spacing: 0.12em; color: #555;">{{ c.brand }}</div>
+                <div style="font-family: 'Cormorant Garamond', serif; font-size: 15px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ c.title }}</div>
+                <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                  <span style="font-size: 12px; font-weight: 500;">{{ c.price }}</span>
+                  <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 8px; padding: 1px 6px;">{{ c.size }}</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-top: 7px;">
+                  <span style="border: 1px solid #101010; background: rgba(255,255,255,0.6); text-align: center; font-size: 10px; padding: 5px 0;">♥</span>
+                  <span style="border: 1px solid #101010; background: rgba(255,255,255,0.6); text-align: center; font-size: 10px; padding: 5px 0;">+</span>
+                  <span style="border: 1px solid #101010; background: rgba(255,255,255,0.6); text-align: center; font-size: 10px; padding: 5px 0;">✕</span>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="position: absolute; right: 14px; bottom: 84px; width: 38px; height: 38px; border-radius: 50%; border: 1px solid #101010; background: rgba(255,255,255,0.7); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; font-size: 15px;">↑</div>
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; border-top: 1px solid #101010; background: rgba(236,235,232,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 11px 16px 22px;">
+          <span style="font-size: 10px; letter-spacing: 0.06em; color: #444;">♥ <b style="color: #101010;">1040</b> · CART <b style="color: #101010;">4</b> · ✕ <b style="color: #101010;">3412</b></span>
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 10px; letter-spacing: 0.14em; padding: 7px 12px; white-space: nowrap; flex-shrink: 0;">SCAN ALL</span>
+            <span style="border: 1px solid #101010; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 15px; background: rgba(255,255,255,0.5);">⊕</span>
+            <span style="border: 1px solid #101010; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 13px; background: rgba(255,255,255,0.5);">⋯</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= screen 3 — cart tab ================= -->
+  <div id="s3" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 11px; letter-spacing: 0.18em; color: #77756e;">S3 — CART TAB</div>
+    <div data-screen-label="s3 cart" style="position: relative; width: 430px; height: 932px; overflow: hidden; background: var(--bg, #ECEBE8); color: #101010; border: 1px solid #101010;">
+      <div style="position: absolute; inset: 0; background: var(--grad, none); pointer-events: none;"></div>
+      <div style="position: absolute; inset: 0; opacity: var(--gridop, 0.5); background-image: linear-gradient(rgba(16,16,16,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16,16,16,0.05) 1px, transparent 1px); background-size: 43px 43px; pointer-events: none;"></div>
+      <div style="position: relative; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 16px 18px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.08em; color: #333;">
+          <span>9:41</span>
+          <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>TRM·LINK</span>
+        </div>
+        <div style="margin: 12px -18px 0; border-top: 1px solid #101010; border-bottom: 1px solid #101010; position: relative;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 12px 26px 10px; border-bottom: 1px solid #101010;">
+            <div style="font-family: 'Minecraft', monospace; font-weight: 400; font-size: 33px; line-height: 0.9; transform: skewX(-8deg); transform-origin: left bottom;">TRM</div>
+            <div style="text-align: right; font-size: 10px; line-height: 1.9; color: #555;">
+              <div><b style="color: #101010;">4</b> SHOWN OF <b style="color: #101010;">4839</b> TRACKED</div>
+              <div>FEED UPDATED <b style="color: #101010;">2H</b> AGO</div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 26px;">
+            <span style="font-size: 9px; letter-spacing: 0.26em;">YOUR FEED · 2026-07-04</span>
+            <span style="width: 8px; height: 8px; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px;">
+          <span style="font-size: 9px; letter-spacing: 0.2em; color: #666;">SHOW</span>
+          <span style="border: 1px solid #101010; background: rgba(255,255,255,0.5); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">FEED <span style="opacity: 0.65;">364</span></span>
+          <span style="border: 1px solid #101010; background: rgba(255,255,255,0.5); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">LIKED <span style="opacity: 0.65;">1040</span></span>
+          <span style="border: 1px solid #101010; background: var(--acc, #DEF65A); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">CART <span style="opacity: 0.65;">4</span></span>
+          <span style="flex: 1;"></span>
+          <span style="border: 1px solid #101010; background: #101010; color: #ECEBE8; padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">FILTERS ⌄</span>
+        </div>
+        <!-- cart summary strip — receipt-in-progress -->
+        <div style="margin-top: 10px; border: 1px solid #8A6A00; background: rgba(255,255,255,0.55); padding: 10px 12px;">
+          <div style="font-size: 8px; letter-spacing: 0.24em; color: #8A6A00;">CART — RECEIPT IN PROGRESS</div>
+          <div style="display: flex; justify-content: space-between; font-size: 10px; margin-top: 7px; color: #444;">
+            <span>GRAILED</span><span><b style="color: #8A6A00;">3</b> · <b style="color: #8A6A00;">$740</b></span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 10px; margin-top: 3px; color: #444;">
+            <span>THE REALREAL</span><span><b style="color: #8A6A00;">1</b> · <b style="color: #8A6A00;">$395</b></span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 7px; border-top: 1px dashed rgba(16,16,16,0.4); padding-top: 6px;">
+            <span style="letter-spacing: 0.14em;">TOTAL</span><span style="font-weight: 500; color: #8A6A00;">$1,135</span>
+          </div>
+        </div>
+        <!-- carted card -->
+        <div style="margin-top: 12px; border: 1px solid #101010; background: rgba(255,255,255,0.5); box-shadow: 0 0 0 2px var(--cart, #E8C24A), 0 0 14px var(--cart, #E8C24A);">
+          <div style="position: relative; height: 210px; border-bottom: 1px solid #101010; background: repeating-linear-gradient(45deg, rgba(16,16,16,0.05) 0px, rgba(16,16,16,0.05) 5px, rgba(255,255,255,0) 5px, rgba(255,255,255,0) 11px); display: flex; align-items: center; justify-content: center;">
+            <span style="font-size: 9px; letter-spacing: 0.14em; color: #666;">[ derby boot — profile ]</span>
+          </div>
+          <div style="padding: 10px 12px;">
+            <div style="font-size: 10px; letter-spacing: 0.14em; color: #555;">GUIDI · GRAILED</div>
+            <div style="font-family: 'Cormorant Garamond', serif; font-size: 19px; margin-top: 3px;">988 leather derby boot</div>
+            <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 5px;">
+              <span style="font-size: 15px; font-weight: 500;">$390</span>
+            </div>
+            <div style="display: flex; gap: 5px; margin-top: 7px;">
+              <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 2px 7px;">US 14</span>
+              <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 2px 7px;">WORN</span>
+              <span style="border: 1px solid rgba(16,16,16,0.4); font-size: 9px; padding: 2px 7px;">FOOTWEAR</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 9px;">
+              <span style="background: rgba(255,255,255,0.6); border: 1px solid #101010; text-align: center; font-size: 10px; letter-spacing: 0.12em; padding: 8px 0;">♥ LOVE</span>
+              <span style="background: var(--cart, #E8C24A); border: 1px solid #101010; text-align: center; font-size: 10px; letter-spacing: 0.12em; padding: 8px 0;">+ CART</span>
+              <span style="background: rgba(255,255,255,0.6); border: 1px solid #101010; text-align: center; font-size: 10px; letter-spacing: 0.12em; padding: 8px 0;">✕ PASS</span>
+            </div>
+          </div>
+          <div style="border-top: 1px solid #101010; background: #101010; color: var(--acc, #DEF65A); text-align: center; font-size: 10px; letter-spacing: 0.2em; padding: 10px;">VIEW ON GRAILED →</div>
+        </div>
+      </div>
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; border-top: 1px solid #101010; background: rgba(236,235,232,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 11px 16px 22px;">
+          <span style="font-size: 10px; letter-spacing: 0.06em; color: #444;">♥ <b style="color: #101010;">1040</b> · CART <b style="color: #101010;">4</b> · ✕ <b style="color: #101010;">3412</b></span>
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 10px; letter-spacing: 0.14em; padding: 7px 12px; white-space: nowrap; flex-shrink: 0;">SCAN ALL</span>
+            <span style="border: 1px solid #101010; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 15px; background: rgba(255,255,255,0.5);">⊕</span>
+            <span style="border: 1px solid #101010; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 13px; background: rgba(255,255,255,0.5);">⋯</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= screen 4 — scan sheet ================= -->
+  <div id="s4" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 11px; letter-spacing: 0.18em; color: #77756e;">S4 — SCAN SHEET</div>
+    <div data-screen-label="s4 scan sheet" style="position: relative; width: 430px; height: 932px; overflow: hidden; background: var(--bg, #ECEBE8); color: #101010; border: 1px solid #101010;">
+      <div style="position: absolute; inset: 0; background: var(--grad, none); pointer-events: none;"></div>
+      <div style="position: absolute; inset: 0; opacity: var(--gridop, 0.5); background-image: linear-gradient(rgba(16,16,16,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16,16,16,0.05) 1px, transparent 1px); background-size: 43px 43px; pointer-events: none;"></div>
+      <!-- dim overlay -->
+      <div style="position: absolute; inset: 0; background: rgba(16,16,16,0.35);"></div>
+      <!-- sheet -->
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; border-top: 2px solid #101010; background: rgba(240,239,236,0.96); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); padding: 18px 20px 26px;">
+        <div style="width: 44px; height: 3px; background: #101010; margin: 0 auto;"></div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 14px;">
+          <span style="font-size: 13px; letter-spacing: 0.2em; font-weight: 500; white-space: nowrap;">[ FILTER SCAN ]</span>
+          <span style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: #555; white-space: nowrap;">tune the next pull</span>
+        </div>
+        <div style="margin-top: 14px;">
+          <div style="font-size: 8px; letter-spacing: 0.24em; color: #777;">SOURCES</div>
+          <div style="display: flex; gap: 6px; margin-top: 6px;">
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 10px; padding: 5px 10px; white-space: nowrap;">GRAILED</span>
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 10px; padding: 5px 10px; white-space: nowrap;">THE REALREAL</span>
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 10px; padding: 5px 10px; white-space: nowrap;">SSENSE</span>
+          </div>
+        </div>
+        <div style="margin-top: 13px;">
+          <div style="font-size: 8px; letter-spacing: 0.24em; color: #777;">CATEGORY</div>
+          <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap;">
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 10px; padding: 5px 10px; white-space: nowrap;">ALL</span>
+            <span style="border: 1px solid rgba(16,16,16,0.45); font-size: 10px; padding: 5px 10px; white-space: nowrap;">OUTERWEAR</span>
+            <span style="border: 1px solid rgba(16,16,16,0.45); font-size: 10px; padding: 5px 10px; white-space: nowrap;">TOPS</span>
+            <span style="border: 1px solid rgba(16,16,16,0.45); font-size: 10px; padding: 5px 10px; white-space: nowrap;">BOTTOMS</span>
+            <span style="border: 1px solid rgba(16,16,16,0.45); font-size: 10px; padding: 5px 10px; white-space: nowrap;">FOOTWEAR</span>
+            <span style="border: 1px solid rgba(16,16,16,0.45); font-size: 10px; padding: 5px 10px; white-space: nowrap;">ACCESSORIES</span>
+          </div>
+        </div>
+        <div style="margin-top: 13px;">
+          <div style="font-size: 8px; letter-spacing: 0.24em; color: #777;">KEYWORD · STYLE · COLOR (GRAILED TITLE SEARCH)</div>
+          <input placeholder="e.g. black leather, cargo, double knee…" style="width: 100%; box-sizing: border-box; margin-top: 6px; background: rgba(255,255,255,0.7); border: 1px solid #101010; border-radius: 0; padding: 11px 12px; color: #101010; font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none;">
+        </div>
+        <div style="margin-top: 13px;">
+          <div style="font-size: 8px; letter-spacing: 0.24em; color: #777;">SPECIFIC BRANDS (BLANK = YOUR FULL LOVED LIST)</div>
+          <input placeholder="rick owens, prada, maison margiela…" style="width: 100%; box-sizing: border-box; margin-top: 6px; background: rgba(255,255,255,0.7); border: 1px solid #101010; border-radius: 0; padding: 11px 12px; color: #101010; font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none;">
+        </div>
+        <div style="display: flex; gap: 12px; margin-top: 13px;">
+          <div style="flex: 1;">
+            <div style="font-size: 8px; letter-spacing: 0.2em; color: #777;">NEW PIECES TO BRING BACK (EXACT)</div>
+            <input value="50" style="width: 100%; box-sizing: border-box; margin-top: 6px; background: rgba(255,255,255,0.7); border: 1px solid #101010; border-radius: 0; padding: 11px 12px; color: #101010; font-family: 'IBM Plex Mono', monospace; font-size: 11px; outline: none;">
+          </div>
+          <div style="flex: 1.2;">
+            <div style="font-size: 8px; letter-spacing: 0.2em; color: #777;">TASTE RATING</div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px; background: var(--acc, #DEF65A); border: 1px solid #101010; padding: 10px 12px;">
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: #101010;"></span>
+              <span style="font-size: 10px; letter-spacing: 0.12em;">RATE AGAINST TASTE</span>
+            </div>
+          </div>
+        </div>
+        <div style="font-size: 9.5px; color: #666; line-height: 1.6; margin-top: 10px;">turn off for a raw search: everything found shows up unrated and sorted by newest — nothing gets buried by the taste model. faster, too.</div>
+        <div style="font-size: 9.5px; color: #444; line-height: 1.6; margin-top: 8px; border-left: 3px solid var(--acc, #DEF65A); padding-left: 9px;">sizes are always locked to yours — every scan only pulls pieces that fit.</div>
+        <div style="display: flex; gap: 10px; margin-top: 16px;">
+          <span style="flex: 1; background: var(--acc, #DEF65A); border: 1px solid #101010; text-align: center; font-size: 11px; letter-spacing: 0.2em; padding: 13px 0; box-shadow: 0 0 16px rgba(222,246,90,0.55);">START SCAN</span>
+          <span style="width: 110px; border: 1px solid #101010; background: transparent; text-align: center; font-size: 11px; letter-spacing: 0.2em; padding: 13px 0;">CLOSE</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= screen 5 — scan in progress ================= -->
+  <div id="s5" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 11px; letter-spacing: 0.18em; color: #77756e;">S5 — SCAN IN PROGRESS · MENU OPEN</div>
+    <div data-screen-label="s5 scanning" style="position: relative; width: 430px; height: 932px; overflow: hidden; background: var(--bg, #ECEBE8); color: #101010; border: 1px solid #101010;">
+      <div style="position: absolute; inset: 0; background: var(--grad, none); pointer-events: none;"></div>
+      <div style="position: absolute; inset: 0; opacity: var(--gridop, 0.5); background-image: linear-gradient(rgba(16,16,16,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16,16,16,0.05) 1px, transparent 1px); background-size: 43px 43px; pointer-events: none;"></div>
+      <div style="position: relative; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 16px 18px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.08em; color: #333;">
+          <span>9:41</span>
+          <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>TRM·LINK</span>
+        </div>
+        <div style="margin: 12px -18px 0; border-top: 1px solid #101010; border-bottom: 1px solid #101010; position: relative;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 12px 26px 10px; border-bottom: 1px solid #101010;">
+            <div style="font-family: 'Minecraft', monospace; font-weight: 400; font-size: 33px; line-height: 0.9; transform: skewX(-8deg); transform-origin: left bottom;">TRM</div>
+            <div style="text-align: right; font-size: 10px; line-height: 1.9; color: #555;">
+              <div><b style="color: #101010;">364</b> SHOWN OF <b style="color: #101010;">4839</b> TRACKED</div>
+              <div>FEED UPDATED <b style="color: #101010;">2H</b> AGO</div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 26px;">
+            <span style="font-size: 9px; letter-spacing: 0.26em;">YOUR FEED · 2026-07-04</span>
+            <span style="width: 8px; height: 8px; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px;">
+          <span style="font-size: 9px; letter-spacing: 0.2em; color: #666;">SHOW</span>
+          <span style="border: 1px solid #101010; background: var(--acc, #DEF65A); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">FEED <span style="opacity: 0.65;">364</span></span>
+          <span style="border: 1px solid #101010; background: rgba(255,255,255,0.5); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">LIKED <span style="opacity: 0.65;">1040</span></span>
+          <span style="border: 1px solid #101010; background: rgba(255,255,255,0.5); padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">ALL <span style="opacity: 0.65;">4839</span></span>
+          <span style="flex: 1;"></span>
+          <span style="border: 1px solid #101010; background: #101010; color: #ECEBE8; padding: 5px 9px; font-size: 10px; white-space: nowrap; flex-shrink: 0;">FILTERS ⌄</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 16px;">
+          <span style="font-family: 'Cormorant Garamond', serif; font-size: 25px;">footwear</span>
+          <span style="font-size: 11px; font-weight: 500; background: var(--acc, #DEF65A); padding: 1px 6px; border: 1px solid #101010;">12</span>
+          <span style="font-size: 9px; letter-spacing: 0.06em; color: #666;">IN-SIZE ONLY, US 14-15 / EU 47-48</span>
+        </div>
+        <div style="margin-top: 10px; border: 1px solid #101010; background: rgba(255,255,255,0.5); opacity: 0.42;">
+          <div style="height: 170px; border-bottom: 1px solid #101010; background: repeating-linear-gradient(45deg, rgba(16,16,16,0.05) 0px, rgba(16,16,16,0.05) 5px, rgba(255,255,255,0) 5px, rgba(255,255,255,0) 11px); display: flex; align-items: center; justify-content: center;">
+            <span style="font-size: 9px; letter-spacing: 0.14em; color: #666;">[ runner — profile ]</span>
+          </div>
+          <div style="padding: 10px 12px 12px;">
+            <div style="font-size: 10px; letter-spacing: 0.14em; color: #555;">BALENCIAGA · SSENSE</div>
+            <div style="font-family: 'Cormorant Garamond', serif; font-size: 19px; margin-top: 3px;">track.2 runner, eu 46</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 9px;">
+              <span style="background: rgba(255,255,255,0.6); border: 1px solid #101010; text-align: center; font-size: 10px; letter-spacing: 0.12em; padding: 8px 0;">♥ LOVE</span>
+              <span style="background: rgba(255,255,255,0.6); border: 1px solid #101010; text-align: center; font-size: 10px; letter-spacing: 0.12em; padding: 8px 0;">+ CART</span>
+              <span style="background: var(--cart, #E8C24A); border: 1px solid #101010; text-align: center; font-size: 10px; letter-spacing: 0.12em; padding: 8px 0;">✕ PASS</span>
+            </div>
+          </div>
+        </div>
+        <!-- save failure toast -->
+        <div style="position: absolute; left: 50%; transform: translateX(-50%); bottom: 320px; background: #101010; color: #ECEBE8; font-size: 10px; letter-spacing: 0.1em; padding: 10px 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.3);">couldn't save — try again</div>
+        <!-- ⋯ popover -->
+        <div style="position: absolute; right: 16px; bottom: 150px; border: 1px solid #101010; background: rgba(240,239,236,0.97); backdrop-filter: blur(12px); box-shadow: 0 10px 28px rgba(0,0,0,0.18); min-width: 170px;">
+          <div style="font-size: 10px; letter-spacing: 0.12em; padding: 11px 14px; border-bottom: 1px solid rgba(16,16,16,0.25);">hide passed</div>
+          <div style="font-size: 10px; letter-spacing: 0.12em; padding: 11px 14px; border-bottom: 1px solid rgba(16,16,16,0.25); color: #8A6A00;">sure? tap again</div>
+          <div style="font-size: 10px; letter-spacing: 0.12em; padding: 11px 14px;">sign out</div>
+        </div>
+      </div>
+      <!-- bottom bar with status + progress -->
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; border-top: 1px solid #101010; background: rgba(236,235,232,0.9); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+        <div style="font-size: 9.5px; color: #2E7D4F; padding: 8px 16px 0;">scanning grailed for fresh picks… (~2-3 min)</div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 16px 6px;">
+          <span style="font-size: 10px; letter-spacing: 0.06em; color: #444;">♥ <b style="color: #101010;">1040</b> · CART <b style="color: #101010;">4</b> · ✕ <b style="color: #101010;">3412</b></span>
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: rgba(255,255,255,0.4); border: 1px solid rgba(16,16,16,0.35); color: #888; font-size: 10px; letter-spacing: 0.14em; padding: 7px 12px; white-space: nowrap; flex-shrink: 0;">SCANNING…</span>
+            <span style="border: 1px solid #8A6A00; color: #8A6A00; font-size: 10px; letter-spacing: 0.12em; padding: 7px 12px; white-space: nowrap; flex-shrink: 0;">CANCEL SCAN</span>
+          </span>
+        </div>
+        <div style="height: 3px; background: rgba(16,16,16,0.12); margin: 6px 0 20px;">
+          <div style="width: 46%; height: 100%; background: var(--acc, #DEF65A); box-shadow: 0 0 8px var(--acc, #DEF65A);"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= screen 6 — first run / empty ================= -->
+  <div id="s6" style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 11px; letter-spacing: 0.18em; color: #77756e;">S6 — FIRST RUN · EMPTY FEED</div>
+    <div data-screen-label="s6 empty" style="position: relative; width: 430px; height: 932px; overflow: hidden; background: var(--bg, #ECEBE8); color: #101010; border: 1px solid #101010;">
+      <div style="position: absolute; inset: 0; background: var(--grad, none); pointer-events: none;"></div>
+      <div style="position: absolute; inset: 0; opacity: var(--gridop, 0.5); background-image: linear-gradient(rgba(16,16,16,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(16,16,16,0.05) 1px, transparent 1px); background-size: 43px 43px; pointer-events: none;"></div>
+      <div style="position: relative; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 16px 18px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.08em; color: #333;">
+          <span>9:41</span>
+          <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>TRM·LINK</span>
+        </div>
+        <div style="margin: 12px -18px 0; border-top: 1px solid #101010; border-bottom: 1px solid #101010; position: relative;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; padding: 12px 26px 10px; border-bottom: 1px solid #101010;">
+            <div style="font-family: 'Minecraft', monospace; font-weight: 400; font-size: 33px; line-height: 0.9; transform: skewX(-8deg); transform-origin: left bottom;">TRM</div>
+            <div style="text-align: right; font-size: 10px; line-height: 1.9; color: #555;">
+              <div><b style="color: #101010;">0</b> SHOWN OF <b style="color: #101010;">0</b> TRACKED</div>
+              <div>NO RUNS YET</div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 26px;">
+            <span style="font-size: 9px; letter-spacing: 0.26em;">YOUR FEED · 2026-07-04</span>
+            <span style="width: 8px; height: 8px; background: var(--acc, #DEF65A); box-shadow: 0 0 6px var(--acc, #DEF65A);"></span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 9px; margin-top: 10px; border: 1px solid #101010; border-left: 4px solid var(--acc, #DEF65A); background: rgba(255,255,255,0.5); padding: 8px 10px;">
+          <span style="font-size: 10px; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">no feed yet — run a haul and your picks will show up here.</span>
+          <span style="font-size: 10px; color: #888;">✕</span>
+        </div>
+        <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 40px; gap: 12px;">
+          <div style="width: 64px; height: 64px; border: 1px solid #101010; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--acc, #DEF65A); box-shadow: 0 0 10px var(--acc, #DEF65A);"></span>
+          </div>
+          <div style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 20px; color: #444;">you're all caught up.</div>
+          <div style="font-size: 10.5px; color: #666; line-height: 1.7;">tap scan now for fresh pieces, or 'all' to browse everything you've saved.</div>
+        </div>
+        <div style="font-size: 9px; color: #888; text-align: center; line-height: 1.7; padding: 0 30px 90px;">trm · prices and availability change, tap through to confirm on the platform · love and pass train your next run.</div>
+      </div>
+      <div style="position: absolute; left: 0; right: 0; bottom: 0; border-top: 1px solid #101010; background: rgba(236,235,232,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 11px 16px 22px;">
+          <span style="font-size: 10px; letter-spacing: 0.06em; color: #444;">♥ <b style="color: #101010;">0</b> · CART <b style="color: #101010;">0</b> · ✕ <b style="color: #101010;">0</b></span>
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: var(--acc, #DEF65A); border: 1px solid #101010; font-size: 10px; letter-spacing: 0.14em; padding: 7px 12px; white-space: nowrap; flex-shrink: 0;">SCAN ALL</span>
+            <span style="border: 1px solid #101010; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 15px; background: rgba(255,255,255,0.5);">⊕</span>
+            <span style="border: 1px solid #101010; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 13px; background: rgba(255,255,255,0.5);">⋯</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{
+  &quot;accent&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#DEF65A&quot;, &quot;options&quot;: [&quot;#DEF65A&quot;, &quot;#C9FF3B&quot;, &quot;#F2FF66&quot;, &quot;#C9A3B4&quot;, &quot;#B08BA5&quot;, &quot;#8B6E8E&quot;, &quot;#6E5E76&quot;, &quot;#A8F0C6&quot;, &quot;#8FE8E0&quot;, &quot;#BFD9FF&quot;, &quot;#D9C7FF&quot;, &quot;#D9885A&quot;, &quot;#C9A44A&quot;, &quot;#A8B08A&quot;, &quot;#8F9E8B&quot;, &quot;#E8B4A0&quot;, &quot;#E0D2B8&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;cartGlow&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#E8C24A&quot;, &quot;options&quot;: [&quot;#E8C24A&quot;, &quot;#DEF65A&quot;, &quot;#C9A3B4&quot;, &quot;#8B6E8E&quot;, &quot;#D9885A&quot;, &quot;#101010&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;bgTone&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#ECEBE8&quot;, &quot;options&quot;: [&quot;#ECEBE8&quot;, &quot;#F3F2EF&quot;, &quot;#E4E2DD&quot;, &quot;#E8DDE2&quot;, &quot;#E4E8E2&quot;, &quot;#E9E4DA&quot;, &quot;#DFE4E8&quot;, &quot;#EDE6E6&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;techGrid&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;gridStrength&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 0.5, &quot;min&quot;: 0, &quot;max&quot;: 1, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Theme&quot; },
+  &quot;gradientStyle&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;dual glow&quot;, &quot;options&quot;: [&quot;off&quot;, &quot;glow top&quot;, &quot;glow bottom&quot;, &quot;vertical wash&quot;, &quot;dual glow&quot;, &quot;duotone wash&quot;, &quot;corner fade&quot;, &quot;horizon&quot;, &quot;vignette&quot;, &quot;split&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Background Gradient&quot; },
+  &quot;gradientColor&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#DEF65A&quot;, &quot;options&quot;: [&quot;#DEF65A&quot;, &quot;#C9A3B4&quot;, &quot;#B08BA5&quot;, &quot;#8B6E8E&quot;, &quot;#9FB8C9&quot;, &quot;#A8F0C6&quot;, &quot;#8FE8E0&quot;, &quot;#BFD9FF&quot;, &quot;#D9C7FF&quot;, &quot;#D9885A&quot;, &quot;#C9A44A&quot;, &quot;#A8B08A&quot;, &quot;#8F9E8B&quot;, &quot;#E8B4A0&quot;, &quot;#E0D2B8&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Background Gradient&quot; },
+  &quot;gradientStrength&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 0.35, &quot;min&quot;: 0, &quot;max&quot;: 1, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Background Gradient&quot; }
+}">
+class Component extends DCLogic {
+  rgba(hex, a) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + Math.max(0, Math.min(1, a)).toFixed(3) + ')';
+  }
+
+  gradient() {
+    const style = this.props.gradientStyle ?? 'dual glow';
+    if (style === 'off') return 'none';
+    const c = this.props.gradientColor ?? this.props.accent ?? '#DEF65A';
+    const k = this.props.gradientStrength ?? 0.35;
+    const hi = this.rgba(c, k), mid = this.rgba(c, k * 0.45), zero = this.rgba(c, 0);
+    if (style === 'glow top') {
+      return 'radial-gradient(480px 420px at 18% 6%, ' + hi + ', ' + zero + ' 65%)';
+    }
+    if (style === 'glow bottom') {
+      return 'radial-gradient(540px 480px at 82% 94%, ' + hi + ', ' + zero + ' 65%)';
+    }
+    if (style === 'vertical wash') {
+      return 'linear-gradient(180deg, ' + this.rgba(c, k * 0.8) + ' 0%, ' + mid + ' 45%, ' + this.rgba(c, k * 1.1) + ' 100%)';
+    }
+    if (style === 'duotone wash') {
+      const a2 = this.props.accent ?? '#DEF65A';
+      return 'linear-gradient(180deg, ' + this.rgba(a2, k * 0.8) + ' 0%, ' + this.rgba(c, k) + ' 100%)';
+    }
+    if (style === 'corner fade') {
+      return 'linear-gradient(135deg, ' + hi + ' 0%, ' + zero + ' 60%)';
+    }
+    if (style === 'horizon') {
+      return 'linear-gradient(180deg, ' + zero + ' 0%, ' + hi + ' 50%, ' + zero + ' 100%)';
+    }
+    if (style === 'vignette') {
+      return 'radial-gradient(ellipse at 50% 45%, ' + zero + ' 42%, ' + hi + ' 100%)';
+    }
+    if (style === 'split') {
+      return 'linear-gradient(180deg, ' + hi + ' 0%, ' + mid + ' 36%, ' + zero + ' 62%)';
+    }
+    // dual glow — like the sign-in frame
+    return 'radial-gradient(460px 400px at 12% 6%, ' + hi + ', ' + zero + ' 62%), radial-gradient(420px 380px at 92% 88%, ' + mid + ', ' + zero + ' 62%)';
+  }
+
+  apply() {
+    if (!this.rootEl) return;
+    const s = this.rootEl.style;
+    s.setProperty('--acc', this.props.accent ?? '#DEF65A');
+    s.setProperty('--bg', this.props.bgTone ?? '#ECEBE8');
+    s.setProperty('--gridop', String(this.props.techGrid === false ? 0 : (this.props.gridStrength ?? 0.5)));
+    s.setProperty('--grad', this.gradient());
+    s.setProperty('--cart', this.props.cartGlow ?? '#E8C24A');
+  }
+
+  componentDidMount() { this.apply(); }
+  componentDidUpdate() { this.apply(); }
+
+  renderVals() {
+    return {
+      rootRef: (el) => { this.rootEl = el; this.apply(); },
+      compact: [
+        { brand: 'RICK OWENS · GRAILED', title: 'du larry jumbo hoodie', price: '$310', size: 'XL', shot: '[ hoodie ]' },
+        { brand: 'PRADA · THE REALREAL', title: 'gabardine trouser', price: '$225', size: 'W 36', shot: '[ trouser ]' },
+        { brand: 'MARGIELA · SSENSE', title: 'gat replica, white', price: '$470', size: 'EU 46', shot: '[ sneaker ]' },
+        { brand: 'LEMAIRE · GRAILED', title: 'croissant bag, tan', price: '$540', size: 'ONE SIZE', shot: '[ bag ]' }
+      ]
+    };
+  }
+}
+
+</script>
+
+
+</body></html>
