@@ -81,23 +81,59 @@ _KEEP = re.compile(r"padded|deconstruct|distress|rivet|asymmetric|cargo|tech|nyl
 def is_blazer(title):
     return bool(_BLZ.search(title or "") and not _KEEP.search(title or ""))
 
+# Sizes are DATA (taste.payload.sizes per user), not code. The conductor scrapes the UNION of all
+# users' sizes — the shared catalog must fit anyone; the feed builder then hard-filters per user.
+# UNION_SIZES is populated in main() from every taste row; these defaults keep dev/tests working.
+UNION_SIZES = {
+    "tops":  {"l","xl","xxl","52","54","56"},
+    "waist": {"36","37","38"},
+    "shoes": {"14","14.5","15","47","48"},
+    "exceptions": [{"brand":"balenciaga","category":"footwear","add":{"13","13.5","46"}}],
+}
+
+def _size_re(tokens):
+    return re.compile(r"\b(" + "|".join(re.escape(t) for t in sorted(tokens, key=len, reverse=True)) + r")\b") if tokens else None
+
 def in_size(cat, s, brand=""):
     s = norm(s)
     if cat == "accessories":
-        # belts need his waist (36-38 / eu 90-95); everything else is one-size
+        # one-size flows; waist-sized accessories (belts) follow the waist union (+ eu belt cm)
         if not s or "one size" in s or s in ("os", "o/s"): return True
-        return bool(re.search(r"\b(36|37|38|90|95)\b", s))
+        belt = UNION_SIZES["waist"] | {"90", "95"}
+        rx = _size_re(belt)
+        return bool(rx and rx.search(s))
     if not s: return False
     if cat == "footwear":
-        # US 14-15 / EU 47-48. US 13 is out (taste-training only, never fit) — EXCEPT Balenciaga,
-        # which runs oversized: a 46 fits, so accept 46 (and its US-normalized 13) for that brand only.
-        if "balenciaga" in norm(brand):
-            return bool(re.search(r"\b(13|13\.5|14|14\.5|15|46|47|48)\b", s))
-        return bool(re.search(r"\b(14|14\.5|15|47|48)\b", s))
+        toks = set(UNION_SIZES["shoes"])
+        for ex in UNION_SIZES.get("exceptions", []):
+            if ex.get("category") == "footwear" and norm(ex.get("brand","")) in norm(brand):
+                toks |= set(ex.get("add") or [])
+        rx = _size_re(toks)
+        return bool(rx and rx.search(s))
     if cat == "bottoms":
-        if re.search(r"\b3[45]\b", s): return False                 # never waist 34/35
-        return bool(re.search(r"\b(36|37|38|54|56)\b", s) or re.search(r"\b(l|xl|xxl)\b", s))
-    return bool(re.search(r"\b(l|xl|xxl)\b", s) or re.search(r"\b(52|54|56)\b", s))   # tops / outerwear
+        rx = _size_re(UNION_SIZES["waist"] | {t for t in UNION_SIZES["tops"] if not t.isdigit() or int(float(t)) > 44})
+        return bool(rx and rx.search(s))
+    rx = _size_re(UNION_SIZES["tops"])                                # tops / outerwear
+    return bool(rx and rx.search(s))
+
+def load_union_sizes(taste_rows):
+    """Union every user's payload.sizes so the shared catalog fits ANY user."""
+    u = {"tops": set(), "waist": set(), "shoes": set(), "exceptions": []}
+    found = False
+    for t in taste_rows:
+        sz = ((t.get("payload") or {}).get("sizes")) or {}
+        if not sz: continue
+        found = True
+        u["tops"]  |= {norm(x) for x in (sz.get("tops") or [])}
+        u["waist"] |= {norm(x) for x in (sz.get("waist") or [])}
+        u["shoes"] |= {norm(x) for x in (sz.get("shoes") or [])}
+        for ex in (sz.get("exceptions") or []):
+            u["exceptions"].append({"brand": ex.get("brand",""), "category": ex.get("category",""),
+                                    "add": {norm(x) for x in (ex.get("add") or [])}})
+    if found:
+        global UNION_SIZES
+        UNION_SIZES = u
+        print(f"size union across users: tops {sorted(u['tops'])} waist {sorted(u['waist'])} shoes {sorted(u['shoes'])}")
 
 # ---------- seasonal rotation (rank-time only — stored scores stay pure vision) ----------
 # Charles travels LA + builds wardrobe year-round: LIGHT jackets stay welcome in summer,
@@ -184,8 +220,16 @@ def apify_run(actor, inp, memory=1024, wait=280):
 # Grailed via ITS OWN Algolia search API — direct, server-side filtered by designer+size+condition, no proxy, effectively free.
 GRAILED_APP  = "MNRWEFSS2Q"
 GRAILED_KEY  = os.environ.get("GRAILED_KEY", "c89dbaddf15fe70e1941a109bf7c2a3d")   # public search key; self-heals on 403
-GRAILED_SIZES = ["size:l","size:xl","size:xxl","size:36","size:37","size:38","size:13","size:14","size:14.5","size:15"]  # size:13 stays for balenciaga (eu46); in_size() refines
-GRAILED_SIZES_ACC = ["size:one size","size:36","size:37","size:38"]                    # accessories: 97% are one-size; belts by waist
+def grailed_size_facet():
+    # built from the live size union (tops alpha/numeric, waists, shoes + brand-exception tokens);
+    # in_size() refines per item, the feed builder refines per USER.
+    toks = set(UNION_SIZES["tops"]) | set(UNION_SIZES["waist"]) | set(UNION_SIZES["shoes"])
+    for ex in UNION_SIZES.get("exceptions", []):
+        toks |= set(ex.get("add") or [])
+    return ["size:" + t for t in sorted(toks)]
+
+def grailed_size_facet_acc():
+    return ["size:one size"] + ["size:" + t for t in sorted(UNION_SIZES["waist"])]      # accessories: 97% one-size; belts by waist
 
 def _grailed_refresh_key():
     global GRAILED_KEY
@@ -240,7 +284,7 @@ def grailed_canon_brands(raw_list):
     return out
 
 def scrape_grailed(brands, loved):
-    sizes = GRAILED_SIZES_ACC if CATEGORY == "accessories" else GRAILED_SIZES
+    sizes = grailed_size_facet_acc() if CATEGORY == "accessories" else grailed_size_facet()
     facet = [["designers.name:" + b for b in brands], sizes, ["condition:is_new", "condition:is_gently_used"], ["department:menswear"]]
     if CATEGORY: facet.append(["category:" + CATEGORY])           # grailed's category facet uses our exact five names
     out = []
@@ -448,7 +492,6 @@ def filter_new(found, known, loved):
         cat = it["category"]
         if cat not in ALLOWED_CATS: continue
         if not in_size(cat, it.get("size"), it.get("brand")): continue
-        if cat == "bottoms" and re.search(r"\b3[45]\b", norm(it.get("size"))): continue
         if is_blazer(it.get("title")): continue
         newurls.add(url)
         tags = tags_from(it["title"])
@@ -457,12 +500,19 @@ def filter_new(found, known, loved):
     return rows, newurls
 
 def main():
-    # loved brands from Charles's taste row (first taste row = him for now)
-    st, tastes = sb("GET", "/rest/v1/taste?select=payload&limit=1")
-    payload = (tastes or [{}])[0].get("payload", {}) if tastes else {}
-    loved_raw = (payload.get("brands", {}) or {}).get("loved", [])
+    # ALL users' taste rows: loved brands and sizes are UNIONED (the shared catalog serves everyone);
+    # tasteWeights for scan-cap ranking still come from the first row (fine at small N — it only
+    # affects which candidates a manual scan keeps, and scans are per-person anyway).
+    st, taste_rows = sb("GET", "/rest/v1/taste?select=user_id,payload")
+    taste_rows = taste_rows if isinstance(taste_rows, list) else []
+    payload = (taste_rows or [{}])[0].get("payload", {}) or {}
+    loved_raw, seen_b = [], set()
+    for t in taste_rows:
+        for b in ((t.get("payload") or {}).get("brands", {}) or {}).get("loved", []):
+            if norm(b) not in seen_b:
+                seen_b.add(norm(b)); loved_raw.append(b)
     loved = set(norm(b) for b in loved_raw)
-    brief = payload.get("visualBrief")   # the learned visual taste rubric (owned + liked vs passed)
+    load_union_sizes(taste_rows)
     if not loved_raw:
         print("no loved brands found — aborting"); return
     # brands: explicit override (on-demand / testing) OR a rotating slice to bound daily cost
@@ -504,17 +554,17 @@ def main():
     print(f"scraped {len(found)} raw items")
 
     # dismissed items are hidden, not banned: if a scan finds one again it returns to the feed
-    # (protects against a "clear feed" that swept up something worth seeing)
+    # (protects against a "clear feed" that swept up something worth seeing) — per user
     try:
-        st2, t2 = sb("GET", "/rest/v1/taste?select=user_id,payload&limit=1")
-        if st2 == 200 and isinstance(t2, list) and t2:
-            p2 = t2[0].get("payload") or {}; s2 = p2.get("signals") or {}
+        st2, t2 = sb("GET", "/rest/v1/taste?select=user_id,payload")
+        for row in (t2 if isinstance(t2, list) else []):
+            p2 = row.get("payload") or {}; s2 = p2.get("signals") or {}
             dis = set(s2.get("dismissedUrls") or [])
             back = dis & {it.get("url") for it in found}
             if back:
                 s2["dismissedUrls"] = sorted(dis - back); p2["signals"] = s2
-                sb("PATCH", "/rest/v1/taste?user_id=eq." + t2[0]["user_id"], {"payload": p2}, {"Prefer": "return=minimal"})
-                print(f"{len(back)} previously-dismissed item(s) re-found by this scan — restored to the feed")
+                sb("PATCH", "/rest/v1/taste?user_id=eq." + row["user_id"], {"payload": p2}, {"Prefer": "return=minimal"})
+                print(f"{len(back)} previously-dismissed item(s) re-found — restored for user {row['user_id'][:8]}")
     except Exception as e:
         print("un-dismiss check failed:", e)
 

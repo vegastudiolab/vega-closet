@@ -10,7 +10,9 @@ import taste_model
 
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 STAGE2_TOP = 60          # personal vision re-ranks only the slice that reaches the top of the feed
-MIN_FIT_TAPS = 300       # below this history size, stage-1 weights aren't trustworthy -> base_score fallback
+STAGE2_TOP_YOUNG = 90    # young models (<MATURE_TAPS) lean harder on the rubric: wider slice, stronger nudge
+MATURE_TAPS = 300        # above this, the user's own fitted weights carry; below, prior + vision carry more
+PRIOR = taste_model.load_prior()
 
 def _loadenv():
     if os.environ.get("SUPABASE_URL"): return
@@ -134,13 +136,12 @@ def build_for_user(uid, taste, catalog):
         c0 = cat_by_url.get(x["url"])
         if c0 and c0.get("attrs"):
             labeled.append((1 if x["action"] in ("liked", "carted") else 0, c0))
-    weights, brate = {}, (lambda b: 0.25)
-    if len(labeled) >= MIN_FIT_TAPS:
-        weights, pairs = taste_model.fit_user_weights(labeled)
-        brate = taste_model.brand_rates(pairs)
-        print(f"  stage-1 weights fitted on {len(labeled)} taps ({len(weights)} features)")
-    else:
-        print(f"  only {len(labeled)} attributed taps — stage-1 fallback to base_score")
+    # prior-anchored fit: works at ANY history size — pure house-prior at 0 taps, personal as they grow
+    weights, pairs = taste_model.fit_user_weights(labeled, prior=PRIOR)
+    brate = taste_model.brand_rates(pairs) if pairs else (lambda b: 0.25)
+    young = len(labeled) < MATURE_TAPS
+    lam = len(labeled) / (len(labeled) + 150)
+    print(f"  stage-1 weights: {len(labeled)} taps, lambda {lam:.2f} personal ({'young' if young else 'mature'} model, {len(weights)} features)")
 
     def stage1(it):
         a = it.get("attrs")
@@ -168,14 +169,30 @@ def build_for_user(uid, taste, catalog):
             elif _LIGHT.search(t): s += 0.04
         return round(s, 4)
 
-    # footwear sizes changed 2026-07-03: US 14-15 / EU 47-48 only (13s were taste-training taps,
-    # they never fit). Balenciaga runs oversized -> 46 (and its US-13 normalization) stays in.
-    def foot_ok(it):
-        if it.get("category") != "footwear": return True
-        s = norm(it.get("size") or "")
-        if "balenciaga" in norm(it.get("brand") or ""):
-            return bool(re.search(r"\b(13|13\.5|14|14\.5|15|46|47|48)\b", s))
-        return bool(re.search(r"\b(14|14\.5|15|47|48)\b", s))
+    # THE hard promise: nothing that doesn't fit THIS user ever reaches their feed. Sizes are data
+    # (taste.payload.sizes) — the shared catalog holds the union of everyone's sizes; this filter
+    # cuts it down to one body. Users without sizes yet (mid-onboarding) see everything.
+    usz = (taste.get("sizes") or {})
+    def _rx(tokens):
+        toks = sorted({norm(t) for t in tokens if t}, key=len, reverse=True)
+        return re.compile(r"\b(" + "|".join(re.escape(t) for t in toks) + r")\b") if toks else None
+    rx_tops, rx_waist = _rx(usz.get("tops") or []), _rx(usz.get("waist") or [])
+    rx_shoes = _rx(usz.get("shoes") or [])
+    exc = [(norm(e.get("brand","")), e.get("category",""), _rx(e.get("add") or []))
+           for e in (usz.get("exceptions") or [])]
+    def fits_user(it):
+        if not usz: return True                            # no sizes on file -> no per-user cut
+        cat = it.get("category"); s = norm(it.get("size") or "")
+        if cat == "accessories":
+            if not s or "one size" in s or s in ("os", "o/s"): return True
+            belt = _rx((usz.get("waist") or []) + ["90", "95"])
+            return bool(belt and belt.search(s))
+        if not s: return False
+        for b, c, rx in exc:                               # brand quirks (balenciaga 46 etc.)
+            if rx and c == cat and b in norm(it.get("brand") or "") and rx.search(s): return True
+        if cat == "footwear": return bool(rx_shoes and rx_shoes.search(s))
+        if cat == "bottoms":  return bool(rx_waist and rx_waist.search(s))
+        return bool(rx_tops and rx_tops.search(s))         # tops / outerwear
 
     # urls Charles cleared without judging (bad scan batches etc.) — hidden from the feed,
     # NEVER fed into taste learning (a dismissal is "not now", not "not my style")
@@ -190,7 +207,7 @@ def build_for_user(uid, taste, catalog):
         it["isLiked"] = url in liked_ids or it["isCarted"]      # carted counts as acted/loved
         if not it["isArchived"] and not it["isLiked"] and url in dismissed:
             continue
-        if not it["isArchived"] and not it["isLiked"] and not foot_ok(it):
+        if not it["isArchived"] and not it["isLiked"] and not fits_user(it):
             n_size_retired += 1
             continue
         it["_s1"] = stage1(it)
@@ -223,12 +240,12 @@ def build_for_user(uid, taste, catalog):
     vb = taste.get("visualBrief")
     brief = vb if isinstance(vb, str) else (vb.get("brief") if isinstance(vb, dict) and isinstance(vb.get("brief"), str) else (json.dumps(vb)[:4000] if vb else None))
     n_stage2 = 0
-    if ANTHROPIC_KEY and brief and weights:
+    if ANTHROPIC_KEY and brief:
         cache = {r["url"]: (r.get("vfit"), r.get("tags") or []) for r in
                  fetch_all("user_scores", "url,vfit,tags", f"&user_id=eq.{uid}")}
         unacted = [it for it in items if not it["isArchived"] and not it["isLiked"] and "unrated" not in (it.get("reasons") or [])]
         unacted.sort(key=lambda x: -x["score"])
-        top = unacted[:STAGE2_TOP]
+        top = unacted[:STAGE2_TOP_YOUNG if young else STAGE2_TOP]
         todo = [it for it in top if it["url"] not in cache]
         fresh = {}
         if todo:
@@ -244,11 +261,12 @@ def build_for_user(uid, taste, catalog):
                 rows_up = [{"user_id": uid, "url": u, "vfit": round(v, 3), "tags": t} for u, (v, t) in fresh.items()]
                 api("POST", "/rest/v1/user_scores?on_conflict=user_id,url", rows_up,
                     {"Prefer": "resolution=merge-duplicates,return=minimal"})
+        vnudge = 0.6 if young else 0.35            # the rubric carries a young model's ranking
         for it in top:
             got = fresh.get(it["url"]) or cache.get(it["url"])
             if not got or got[0] is None: continue
             vf, vtags = float(got[0]), got[1]
-            it["score"] = round(it["score"] + 0.35 * (vf - 0.5), 4)   # vision nudges the visible ranking
+            it["score"] = round(it["score"] + vnudge * (vf - 0.5), 4)  # vision nudges the visible ranking
             if vtags: it["reasons"] = vtags[:5]                        # per-user why-tags (payload copy only)
             n_stage2 += 1
     for it in items: it.pop("_s1", None)

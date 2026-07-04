@@ -340,6 +340,7 @@
       <input type="email" id="authEmail" placeholder="you@email.com" autocomplete="email" />
       <input type="password" id="authPass" placeholder="password" autocomplete="current-password" />
       <button class="authbtn" id="authSend" type="button">sign in</button>
+      <button class="authlink" id="authMode" type="button">new here? create your model</button>
       <button class="authlink" id="authForgot" type="button">forgot password?</button>
       <p class="authmsg" id="authMsg" style="display:none;"></p>
       <p class="autherr" id="authErr" style="display:none;"></p>
@@ -493,8 +494,31 @@
     if (error) { errEl.textContent = error.message.toLowerCase(); errEl.style.display = "block"; return; }
     // onAuthStateChange renders the feed from here.
   }
-  document.getElementById("authSend").addEventListener("click", doSignIn);
-  document.getElementById("authPass").addEventListener("keydown", e => { if (e.key === "Enter") doSignIn(); });
+  // sign-in <-> create-account toggle. Full onboarding (THE FITTING) replaces this entry
+  // point in sprint 1; signUp is the plumbing it will land on.
+  let AUTH_MODE = "signin";
+  document.getElementById("authMode").addEventListener("click", function(){
+    AUTH_MODE = AUTH_MODE === "signin" ? "signup" : "signin";
+    document.getElementById("authSend").textContent = AUTH_MODE === "signup" ? "create account" : "sign in";
+    this.textContent = AUTH_MODE === "signup" ? "have a model? sign in" : "new here? create your model";
+    document.getElementById("authForgot").style.display = AUTH_MODE === "signup" ? "none" : "";
+    document.getElementById("authPass").setAttribute("autocomplete", AUTH_MODE === "signup" ? "new-password" : "current-password");
+  });
+  async function doSignUp(){
+    const email = (document.getElementById("authEmail").value || "").trim();
+    const pass  = document.getElementById("authPass").value || "";
+    const errEl = document.getElementById("authErr");
+    const btn = document.getElementById("authSend");
+    errEl.style.display = "none";
+    if (!email || pass.length < 8) { errEl.textContent = "enter your email and a password (8+ characters)."; errEl.style.display = "block"; return; }
+    btn.disabled = true; btn.textContent = "creating…";
+    const { error } = await sb.auth.signUp({ email, password: pass });
+    btn.disabled = false; btn.textContent = "create account";
+    if (error) { errEl.textContent = error.message.toLowerCase(); errEl.style.display = "block"; return; }
+    // with confirmations off, a session starts immediately and onAuthStateChange boots the app
+  }
+  document.getElementById("authSend").addEventListener("click", () => AUTH_MODE === "signup" ? doSignUp() : doSignIn());
+  document.getElementById("authPass").addEventListener("keydown", e => { if (e.key === "Enter") (AUTH_MODE === "signup" ? doSignUp() : doSignIn()); });
 
   // ---- forgot password: email a recovery link; the link lands back here and opens the reset form ----
   document.getElementById("authForgot").addEventListener("click", async () => {

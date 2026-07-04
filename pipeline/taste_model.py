@@ -160,11 +160,34 @@ def brand_rates(sig_rows, prior_taps=8):
         return (l_ + prior_taps * base) / (n_ + prior_taps)
     return rate
 
-def fit_user_weights(labeled):
-    """labeled: list of (label01, catalog_row_with_attrs). Returns (weights, brate_fn_source_pairs)."""
+def load_prior():
+    """The house prior: de-personalized attribute weights (shipped in the repo). Lets a brand-new
+    user rank sanely from tap #0; their own data takes over smoothly as history grows."""
+    import os
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prior_weights.json")
+    try:
+        return json.load(open(p))
+    except Exception:
+        return {}
+
+def blend(w_user, w_prior, n, half=150):
+    """w = lam*user + (1-lam)*prior, lam = n/(n+half). Continuous autonomy: lam=0 with no history
+    (pure prior), ~0.5 after onboarding, ->1 as taps accumulate. No mode switches, no cliffs."""
+    lam = n / (n + half) if n > 0 else 0.0
+    keys = set(w_user) | set(w_prior)
+    return {k: lam * w_user.get(k, 0.0) + (1 - lam) * w_prior.get(k, 0.0) for k in keys}
+
+def fit_user_weights(labeled, prior=None):
+    """labeled: list of (label01, catalog_row_with_attrs). Returns (weights, brate_fn_source_pairs).
+    With a prior, the returned weights are prior-anchored — usable at ANY history size."""
     pairs = [(l, (c.get("brand") or "")) for l, c in labeled]
     rate = brand_rates(pairs)
-    X = [featurize(c["attrs"], c.get("brand"), c.get("price"), c.get("category"), rate(c.get("brand"))) for _, c in labeled]
-    X = prune_rare(X)
-    y = [l for l, _ in labeled]
-    return logistic_fit(X, y), pairs
+    w_user = {}
+    if len(labeled) >= 40:                                   # below the fit floor, the prior carries alone
+        X = [featurize(c["attrs"], c.get("brand"), c.get("price"), c.get("category"), rate(c.get("brand"))) for _, c in labeled]
+        X = prune_rare(X)
+        y = [l for l, _ in labeled]
+        w_user = logistic_fit(X, y)
+    if prior:
+        return blend(w_user, prior, len(labeled)), pairs
+    return w_user, pairs
