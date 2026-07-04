@@ -1,0 +1,33 @@
+name: trm attribute extraction
+
+on:
+  workflow_dispatch:
+    inputs:
+      only_tapped:
+        description: 'only items with signals (backtest set)'
+        default: '1'
+      limit:
+        description: 'cap items this run (0 = all)'
+        default: '0'
+
+concurrency:
+  group: trm-attr-extract
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: extract shared attributes
+        env:
+          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          ONLY_TAPPED:         ${{ github.event.inputs.only_tapped || '1' }}
+          LIMIT:               ${{ github.event.inputs.limit || '0' }}
+        run: python pipeline/attr_extract.py
