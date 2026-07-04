@@ -353,9 +353,10 @@
   .fit-ghost { font-family:var(--mono); background:none; border:none; color:#8a8a85;
     font-size:11px; letter-spacing:0.12em; text-transform:lowercase; text-decoration:underline; cursor:pointer; padding:12px; }
   .fit-screen { display:none; flex:1; flex-direction:column; }
-  .fit-screen.on { display:flex; }
-  #nucleusWrap { position:relative; margin:8px auto 4px; }
-  #nucleus { display:block; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
+  .fit-screen.on { display:flex; animation:fadeUp 480ms var(--ease) both; }
+  #nucleusWrap { position:relative; width:300px; margin:6px auto 2px; }
+  #nucleus { display:block; margin:0 auto; }
   .nuc-stats { display:flex; justify-content:center; gap:18px; font-size:10px; letter-spacing:0.14em;
     text-transform:uppercase; color:#8a8a85; }
   .nuc-stats b { color:#ECEBE8; font-weight:500; }
@@ -363,7 +364,9 @@
   .deck-card { position:absolute; inset:0; margin:auto; max-width:340px; height:min(60vh,440px);
     background:#181816; border:1px solid rgba(236,235,232,0.85); border-radius:0; display:flex; flex-direction:column;
     will-change:transform; user-select:none; -webkit-user-select:none; }
-  .deck-card.behind { transform:translateY(7px) scale(0.97); opacity:0.7; }
+  @keyframes dealIn { from { opacity:0; transform:translateY(12px) scale(0.96); } to { opacity:1; transform:none; } }
+  .deck-card:not(.behind) { animation:dealIn 280ms ease-out; }
+  .deck-card.behind { transform:translateY(7px) scale(0.97); opacity:0.7; animation:none; }
   .deck-card .im { flex:1; background-size:cover; background-position:center top; border-bottom:1px solid rgba(236,235,232,0.85);
     background-color:#1e1e1c; }
   .deck-card .nm { font-family:var(--serif); font-size:17px; color:#ECEBE8; padding:10px 12px 4px;
@@ -507,8 +510,10 @@
       <div class="fit-lead">a taste model, fitted to you.</div>
       <div class="fit-aside">trm learns what you'd actually wear — then hunts grailed, the realreal and ssense for it, every day, only in your size.</div>
       <div class="fit-aside">it can't read your mind yet. so first, a fitting.</div>
-      <div id="nucleusWrap"><canvas id="nucleus" width="300" height="300"></canvas></div>
-      <div class="nuc-stats"><span>SIGNALS <b id="nucSig">0</b></span><span>DENSITY <b id="nucDen">0.15</b></span><span>DRIFT <b id="nucDrift">WANDERING</b></span></div>
+      <div id="nucleusWrap">
+        <canvas id="nucleus" width="300" height="300"></canvas>
+        <div class="nuc-stats"><span>SIGNALS <b id="nucSig">0</b></span><span>DENSITY <b id="nucDen">0.15</b></span><span>DRIFT <b id="nucDrift">WANDERING</b></span></div>
+      </div>
       <div style="flex:1"></div>
       <button class="fit-btn" id="fitBegin" type="button">begin the fitting</button>
       <div class="fit-mono" style="text-align:center; margin-top:10px;">NO FORMS. YOU JUST DECIDE THINGS.</div>
@@ -537,7 +542,6 @@
       <div class="fit-aside" style="text-align:center;">that's a first sketch of your taste. now make it a portrait.</div>
       <div id="doneNuc"></div>
       <div style="flex:1"></div>
-      <button class="fit-btn" id="doneNext" type="button">see the read →</button>
     </div>
 
     <!-- the read -->
@@ -1532,8 +1536,8 @@
         $("doneNuc").appendChild($("nucleusWrap"));
         addParticles(500); retarget();                     // celebratory density burst
         show("fitDone");
+        setTimeout(buildRead, 2800);                       // the read arrives on its own — no extra tap
       }
-      $("doneNext").addEventListener("click", buildRead, LSN);
       function buildRead(){
         if ($("fitRead").classList.contains("on")) return;
         const moods = top("mood", 3), sils = top("silhouette", 2), pals = top("palette", 4);
