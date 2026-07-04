@@ -86,7 +86,7 @@ PRIOR_TAPS     = 8     # bayesian smoothing anchor so small samples don't over-t
 
 def build_for_user(uid, taste, catalog):
     sigs = fetch_all("signals", "url,action,brand,category,reasons,price", f"&user_id=eq.{uid}")
-    liked_ids, passed_ids = set(), set()
+    liked_ids, passed_ids, carted_ids = set(), set(), set()
     liked_brands, passed_brands = Counter(), Counter()
     liked_tags, passed_tags = Counter(), Counter()
     passed_prices = []
@@ -98,6 +98,11 @@ def build_for_user(uid, taste, catalog):
             st[0] += 1
             liked_ids.add(x["url"]); liked_brands[norm(x.get("brand"))] += 1
             for r in x.get("reasons") or []: liked_tags[norm(r)] += 1
+        elif x["action"] == "carted":
+            # cart = real purchase candidate: strongest positive signal (double a love's weight)
+            st[0] += 1
+            carted_ids.add(x["url"]); liked_brands[norm(x.get("brand"))] += 2
+            for r in x.get("reasons") or []: liked_tags[norm(r)] += 2
         else:
             passed_ids.add(x["url"]); passed_brands[norm(x.get("brand"))] += 1
             for r in x.get("reasons") or []: passed_tags[norm(r)] += 1
@@ -120,7 +125,8 @@ def build_for_user(uid, taste, catalog):
     def adj(it):
         s = float(it.get("base_score") or 0)
         url = it["url"]; b = norm(it.get("brand"))
-        if url in liked_ids: s += 0.30
+        if url in carted_ids: s += 0.45
+        elif url in liked_ids: s += 0.30
         if b in liked_brands: s += min(0.03 * liked_brands[b], 0.09)
         for r in it.get("reasons") or []:
             rn = norm(r)
@@ -154,7 +160,9 @@ def build_for_user(uid, taste, catalog):
     n_size_retired = 0
     for c in catalog:
         it = dict(c); url = it["url"]
-        it["isArchived"] = url in passed_ids; it["isLiked"] = url in liked_ids
+        it["isCarted"] = url in carted_ids
+        it["isArchived"] = url in passed_ids
+        it["isLiked"] = url in liked_ids or it["isCarted"]      # carted counts as acted/loved
         if not it["isArchived"] and not it["isLiked"] and url in dismissed:
             continue
         if not it["isArchived"] and not it["isLiked"] and not foot_ok(it):
@@ -180,7 +188,7 @@ def build_for_user(uid, taste, catalog):
         return {"id":it.get("id"),"platform":it.get("platform"),"brand":it.get("brand"),"title":it.get("title"),
                 "category":it.get("category"),"price":it.get("price"),"size":it.get("size"),"condition":it.get("condition"),
                 "image":it.get("image"),"url":it.get("url"),"reasons":it.get("reasons") or [],"score":it["score"],
-                "sz":it.get("sz"),"isArchived":it["isArchived"],"isLiked":it["isLiked"],"isNew":it["isNew"]}
+                "sz":it.get("sz"),"isArchived":it["isArchived"],"isLiked":it["isLiked"],"isCarted":it.get("isCarted",False),"isNew":it["isNew"]}
     secout = []
     for key, title, sub in SECTIONS:
         cat = [it for it in items if it.get("category") == key]

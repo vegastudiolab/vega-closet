@@ -108,8 +108,16 @@
   .act.pass:hover { border-color:var(--warn); }
   .card[data-sig="like"] { border-color:var(--cyan); box-shadow:0 0 0 1px var(--cyan) inset, 0 10px 40px rgba(68,187,221,0.18); }
   .card[data-sig="like"] .act.like { background:var(--cyan); color:#042430; border-color:var(--cyan); }
+  .act.cart:hover { border-color:var(--warn); color:#f7e6b0; }
+  .card[data-sig="cart"] { border-color:var(--warn); box-shadow:0 0 0 1px var(--warn) inset, 0 10px 40px rgba(232,194,74,0.18); }
+  .card[data-sig="cart"] .act.cart { background:var(--warn); color:#2a2300; border-color:var(--warn); }
   .card[data-sig="pass"] { opacity:0.42; }
   .card[data-sig="pass"] .act.pass { background:var(--warn); color:#2a2300; border-color:var(--warn); }
+  /* cart tab summary: per-platform counts + running total */
+  .cartsum { display:none; background:var(--glass); border:1px solid rgba(232,194,74,0.4); border-radius:14px;
+             padding:12px 16px; margin:0 0 18px; font-size:13px; line-height:1.8; }
+  .cartsum b { color:var(--warn); }
+  body.compact .acts .alab { display:none; }   /* compact grid: icons only, three buttons fit */
   body.hidepassed .card[data-sig="pass"] { display:none; }
   /* single-row bar: solid + blurred so cards never bleed through, padding on body matches height */
   .sigbar { position:fixed; left:0; right:0; bottom:0; z-index:50;
@@ -337,6 +345,7 @@
       </div>
       <button id="viewToggle" type="button" title="switch to compact grid" aria-label="toggle grid view">⊞</button>
     </div>
+    <div class="cartsum" id="cartsummary"></div>
     <div id="sections"></div>
     <div id="emptymsg" style="display:none;text-align:center;padding:46px 24px;color:#8b93a7;font-size:15px;line-height:1.55;"></div>
   </div>
@@ -580,7 +589,7 @@
       const img = safeUrl(it.image), href = safeUrl(it.url);
       const plat = esc(platLabel[it.platform]||it.platform);
       const searchText = esc(((it.brand||"")+" "+(it.title||"")+" "+((it.reasons||[]).join(" "))).toLowerCase());
-      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}" data-search="${searchText}">
+      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}" data-carted="${it.isCarted?1:0}" data-search="${searchText}">
         <div class="imgwrap">
           ${badge}
           <img src="${img}" alt="${esc(it.title)}" loading="lazy" referrerpolicy="no-referrer" decoding="async"
@@ -595,8 +604,9 @@
           <div class="meta">${sizePill}${condPill}<span class="pill">${esc(it.category)}</span></div>
           <div class="why">${why}</div>
           <div class="acts">
-            <button class="act like" data-act="like" type="button">♥ love</button>
-            <button class="act pass" data-act="pass" type="button">✕ pass</button>
+            <button class="act like" data-act="like" type="button">♥<span class="alab"> love</span></button>
+            <button class="act cart" data-act="cart" type="button">🛒<span class="alab"> cart</span></button>
+            <button class="act pass" data-act="pass" type="button">✕<span class="alab"> pass</span></button>
           </div>
           <a class="view" href="${href}" target="${PWA ? '_self' : '_blank'}" rel="noopener">view on ${plat}</a>
         </div>
@@ -618,7 +628,7 @@
     const VIEW = { status:"feed", cat:"all", sz:"all", price:"all", plat:"all", sort:"default" };
     let SEARCH_Q = "";
     const cards = () => [...document.querySelectorAll(".card")];
-    const STAT  = [["feed","feed"],["liked","liked"],["archived","archived"],["all","all"]];
+    const STAT  = [["feed","feed"],["liked","liked"],["cart","cart"],["archived","archived"],["all","all"]];
     const CATS  = [["all","all"],["outerwear","outerwear"],["tops","tops"],["pants","bottoms"],["shoes","footwear"],["accessories","accessories"]];
     const PLATS = [["all","all"],["grailed","grailed"],["the realreal","therealreal"],["ssense","ssense"]];
     const PRICES= [["all","all"],["under $200","0-200"],["$200–500","200-500"],["$500–1k","500-1000"],["$1k+","1000-"]];
@@ -626,7 +636,8 @@
     const szSeen = new Set(cards().map(c=>c.dataset.sz));
     const SIZES = [["all","all"],["L","L"],["XL","XL"],["XXL","XXL"],["w 36","w36"],["w 38","w38"],["us 14","us14"],["us 15","us15"],["eu 46-48","eu46-48"],["one size","os"],["us 13","us13"],["eu 47-49","eu47-49"]].filter(([l,v])=>v==="all"||szSeen.has(v));
     function statusMatch(c,s){
-      if (s==="liked")    return c.dataset.liked==="1";
+      if (s==="liked")    return c.dataset.liked==="1" && c.dataset.carted!=="1";
+      if (s==="cart")     return c.dataset.carted==="1";
       if (s==="archived") return c.dataset.archived==="1";
       if (s==="all")      return true;                                   // everything: feed + liked + archived
       return c.dataset.archived==="0" && c.dataset.liked==="0";          // feed = not yet acted on
@@ -711,6 +722,21 @@
                          : VIEW.status==="archived" ? "nothing passed here yet." : "nothing here yet."; }
         else em.style.display="none";
       }
+      // cart tab: per-platform counts + running total, so the haul price is visible before committing
+      const csum = document.getElementById("cartsummary");
+      if (csum){
+        if (VIEW.status==="cart" && shown){
+          const by = {}; let tot = 0;
+          visibleCards.forEach(c=>{
+            const p = +(c.dataset.price||0), pl = c.dataset.platform;
+            tot += p; by[pl] = by[pl] || {n:0,sum:0}; by[pl].n++; by[pl].sum += p;
+          });
+          csum.innerHTML = Object.entries(by).map(([pl,v]) =>
+            esc(platLabel[pl]||pl)+": <b>"+v.n+"</b> · "+money(v.sum)).join(" &nbsp;·&nbsp; ")
+            + " &nbsp;—&nbsp; total <b>"+money(tot)+"</b>";
+          csum.style.display = "block";
+        } else csum.style.display = "none";
+      }
       renderFilters();
     }
     document.getElementById("filters").addEventListener("click", e=>{
@@ -758,7 +784,7 @@
     const SIG    = {};   // url -> action ("liked"|"passed")
     const SIG_TS = {};   // url -> ISO timestamp of when action was taken (for date sort)
     function actOf(url){ return SIG[url] || ""; }
-    function sigTag(url){ const a=actOf(url); return a==="liked" ? "like" : a==="passed" ? "pass" : ""; }
+    function sigTag(url){ const a=actOf(url); return a==="liked" ? "like" : a==="carted" ? "cart" : a==="passed" ? "pass" : ""; }
 
     // Seed from LIVE signals table (source of truth), paginated past the 1000-row cap.
     for (let from=0; from<40000; from+=1000){
@@ -772,15 +798,16 @@
       document.querySelectorAll(".card").forEach(c=>{
         const url = decodeURIComponent(c.dataset.url||"");
         const a = actOf(url);
-        if (a==="liked")      { c.dataset.liked="1"; c.dataset.archived="0"; }   // honor prior taps on load
-        else if (a==="passed"){ c.dataset.archived="1"; c.dataset.liked="0"; }
-        else                  { c.dataset.liked="0";   c.dataset.archived="0"; } // live tally says untouched -> unreviewed
+        if (a==="liked")       { c.dataset.liked="1"; c.dataset.carted="0"; c.dataset.archived="0"; }   // honor prior taps on load
+        else if (a==="carted") { c.dataset.liked="1"; c.dataset.carted="1"; c.dataset.archived="0"; }   // cart = loved + purchase candidate
+        else if (a==="passed") { c.dataset.archived="1"; c.dataset.liked="0"; c.dataset.carted="0"; }
+        else                   { c.dataset.liked="0"; c.dataset.carted="0"; c.dataset.archived="0"; }   // live tally says untouched -> unreviewed
         c.dataset.sig = sigTag(url);
       });
     }
     function updateSigBar(){
-      let l=0,p=0; Object.values(SIG).forEach(a=>{ if(a==="liked") l++; else if(a==="passed") p++; });
-      document.getElementById("sigcnt").innerHTML = "♥ <b>"+l+"</b> loved · ✕ <b>"+p+"</b> passed";
+      let l=0,p=0,ct=0; Object.values(SIG).forEach(a=>{ if(a==="liked") l++; else if(a==="carted") ct++; else if(a==="passed") p++; });
+      document.getElementById("sigcnt").innerHTML = "♥ <b>"+l+"</b> · 🛒 <b>"+ct+"</b> · ✕ <b>"+p+"</b>";
     }
 
     // Tap handler: optimistic UI first (identical feel), then persist to Supabase.
@@ -802,16 +829,19 @@
       const url = decodeURIComponent(cardEl.dataset.url||"");  if(!url) return;   // the card's OWN url (ids collide across sources)
       const it = ITEM_OF[url] || {brand:"", category:cardEl.dataset.cat||"", price:(+cardEl.dataset.price)||null, reasons:[]};
 
-      const want = btn.dataset.act==="like" ? "liked" : "passed";
+      const act  = btn.dataset.act;
+      const want = act==="like" ? "liked" : act==="cart" ? "carted" : "passed";
       const prev = SIG[url];
       let next;                                  // '' means toggled OFF (returns to feed)
-      if (prev===want) next = "";                // tapping the active action toggles it off
+      if (act==="cart" && prev==="carted") next = "liked";   // un-cart keeps the love
+      else if (prev===want) next = "";           // tapping the active action toggles it off
       else next = want;                          // sets (or switches) the action
 
       // ---- optimistic UI (same as feed.html: move between tabs + update sig) ----
       if (next){ SIG[url] = next; SIG_TS[url] = new Date().toISOString(); } else { delete SIG[url]; delete SIG_TS[url]; }
       cardEl.dataset.sig = sigTag(url);
-      cardEl.dataset.liked   = SIG[url]==="liked"  ? "1" : "0";
+      cardEl.dataset.liked   = (SIG[url]==="liked" || SIG[url]==="carted") ? "1" : "0";
+      cardEl.dataset.carted  = SIG[url]==="carted" ? "1" : "0";
       cardEl.dataset.archived= SIG[url]==="passed" ? "1" : "0";
       updateSigBar();
       applyFilters();                            // loved -> jumps to liked tab and leaves the feed
@@ -834,7 +864,8 @@
         // roll back optimistic state on failure
         if (prev) SIG[url] = prev; else delete SIG[url];
         cardEl.dataset.sig = sigTag(url);
-        cardEl.dataset.liked   = SIG[url]==="liked"  ? "1" : "0";
+        cardEl.dataset.liked   = (SIG[url]==="liked" || SIG[url]==="carted") ? "1" : "0";
+        cardEl.dataset.carted  = SIG[url]==="carted" ? "1" : "0";
         cardEl.dataset.archived= SIG[url]==="passed" ? "1" : "0";
         updateSigBar();
         applyFilters();
@@ -1071,7 +1102,8 @@
           // reflect on the matching card (if it's in this feed), then refresh views
           document.querySelectorAll(".card").forEach(c=>{
             if (decodeURIComponent(c.dataset.url||"") !== url) return;
-            c.dataset.liked    = SIG[url]==="liked"  ? "1" : "0";
+            c.dataset.liked    = (SIG[url]==="liked" || SIG[url]==="carted") ? "1" : "0";
+            c.dataset.carted   = SIG[url]==="carted" ? "1" : "0";
             c.dataset.archived = SIG[url]==="passed" ? "1" : "0";
             c.dataset.sig      = sigTag(url);
           });
