@@ -327,6 +327,82 @@
                  background:transparent; color:var(--ink); border:1px solid var(--line); border-radius:0;
                  padding:13px 0; cursor:pointer; }
 
+  /* ================= THE FITTING (onboarding — dark world; the feed stays paper) ================= */
+  #fitting { position:fixed; inset:0; z-index:200; display:none; background:#101010; color:#ECEBE8;
+    font-family:var(--mono); overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  #fitting.on { display:block; }
+  #fitting::before { content:""; position:fixed; inset:0; pointer-events:none;
+    background-image:linear-gradient(rgba(236,235,232,0.045) 1px, transparent 1px),
+                     linear-gradient(90deg, rgba(236,235,232,0.045) 1px, transparent 1px);
+    background-size:43px 43px; }
+  .fit-wrap { position:relative; max-width:520px; margin:0 auto; min-height:100%;
+    display:flex; flex-direction:column; padding:calc(14px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); }
+  .fit-top { display:flex; justify-content:space-between; align-items:center; font-size:10px;
+    letter-spacing:0.16em; color:#8a8a85; text-transform:uppercase; }
+  .fit-top .sig b { color:#ECEBE8; font-weight:500; }
+  .fit-top .dot { width:6px; height:6px; border-radius:50%; background:var(--acc);
+    box-shadow:0 0 6px var(--acc); display:inline-block; margin-right:6px; vertical-align:1px; }
+  .fit-logo { font-family:'Minecraft',monospace; font-size:34px; line-height:0.9;
+    transform:skewX(-8deg); transform-origin:left bottom; color:#ECEBE8; margin-top:18px; }
+  .fit-lead { font-family:var(--serif); font-size:24px; line-height:1.3; color:#ECEBE8; margin-top:14px; text-transform:lowercase; }
+  .fit-aside { font-family:var(--serif); font-style:italic; color:#b8b7b0; font-size:15px; line-height:1.5; margin-top:8px; text-transform:lowercase; }
+  .fit-mono { font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8a8a85; line-height:1.9; }
+  .fit-btn { font-family:var(--mono); width:100%; background:var(--acc); color:#101010;
+    border:1px solid #101010; border-radius:0; font-size:12px; letter-spacing:0.22em; text-transform:uppercase; font-weight:500;
+    padding:15px; cursor:pointer; box-shadow:0 0 18px rgba(222,246,90,0.4); }
+  .fit-ghost { font-family:var(--mono); background:none; border:none; color:#8a8a85;
+    font-size:11px; letter-spacing:0.12em; text-transform:lowercase; text-decoration:underline; cursor:pointer; padding:12px; }
+  .fit-screen { display:none; flex:1; flex-direction:column; }
+  .fit-screen.on { display:flex; }
+  #nucleusWrap { position:relative; margin:8px auto 4px; }
+  #nucleus { display:block; }
+  .nuc-stats { display:flex; justify-content:center; gap:18px; font-size:10px; letter-spacing:0.14em;
+    text-transform:uppercase; color:#8a8a85; }
+  .nuc-stats b { color:#ECEBE8; font-weight:500; }
+  .deck-zone { position:relative; flex:1; min-height:380px; margin-top:12px; touch-action:none; }
+  .deck-card { position:absolute; inset:0; margin:auto; max-width:340px; height:min(60vh,440px);
+    background:#181816; border:1px solid rgba(236,235,232,0.85); border-radius:0; display:flex; flex-direction:column;
+    will-change:transform; user-select:none; -webkit-user-select:none; }
+  .deck-card.behind { transform:translateY(7px) scale(0.97); opacity:0.7; }
+  .deck-card .im { flex:1; background-size:cover; background-position:center top; border-bottom:1px solid rgba(236,235,232,0.85);
+    background-color:#1e1e1c; }
+  .deck-card .nm { font-family:var(--serif); font-size:17px; color:#ECEBE8; padding:10px 12px 4px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-transform:lowercase; }
+  .deck-card .ey { font-size:9px; letter-spacing:0.18em; color:#8a8a85; padding:0 12px 12px; text-transform:uppercase; }
+  .deck-stamp { position:absolute; top:18px; font-size:15px; letter-spacing:0.3em; padding:7px 14px;
+    border:2px solid; opacity:0; pointer-events:none; font-weight:500; }
+  .deck-stamp.pull { right:14px; color:var(--acc); border-color:var(--acc);
+    text-shadow:0 0 12px rgba(222,246,90,0.7); transform:rotate(8deg); }
+  .deck-stamp.pass { left:14px; color:#ECEBE8; border-color:#ECEBE8; transform:rotate(-8deg); }
+  .deck-acts { display:flex; gap:10px; justify-content:center; margin-top:12px; }
+  .deck-acts button { font-family:var(--mono); width:120px; padding:12px 0; font-size:11px; border-radius:0;
+    letter-spacing:0.22em; cursor:pointer; background:none; text-transform:uppercase; }
+  .deck-acts .p { border:1px solid rgba(236,235,232,0.85); color:#ECEBE8; }
+  .deck-acts .l { border:1px solid var(--acc); color:var(--acc); background:rgba(222,246,90,0.08); }
+  .deck-read { position:absolute; left:0; right:0; top:38%; text-align:center; opacity:0;
+    transition:opacity 400ms var(--ease); pointer-events:none; z-index:5; }
+  .deck-read.on { opacity:1; }
+  .deck-read .s { font-family:var(--serif); font-style:italic; font-size:19px; color:#ECEBE8;
+    background:rgba(16,16,16,0.9); display:inline-block; padding:8px 16px; text-transform:lowercase; }
+  .deck-read .m { font-size:10px; letter-spacing:0.2em; color:var(--acc); margin-top:6px; text-transform:uppercase; }
+  .fit-sheet { border:1px solid rgba(236,235,232,0.85); background:rgba(24,24,22,0.7); padding:14px 16px; margin-top:14px; }
+  .fit-sheet .row { display:flex; justify-content:space-between; gap:10px; font-size:11px; padding:7px 0;
+    border-bottom:1px dashed rgba(236,235,232,0.25); }
+  .fit-sheet .row:last-child { border-bottom:none; }
+  .fit-sheet .k { letter-spacing:0.18em; color:#8a8a85; text-transform:uppercase; font-size:9.5px; padding-top:3px; }
+  .fit-sheet .v { font-family:var(--serif); font-style:italic; font-size:16px; color:#ECEBE8; text-align:right; text-transform:lowercase; }
+  .swatch { display:inline-block; width:14px; height:14px; border:1px solid rgba(236,235,232,0.6); margin-left:5px; vertical-align:-2px; }
+  .fit-chips { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+  .fit-chip { font-family:var(--mono); border:1px solid rgba(236,235,232,0.5); background:none; border-radius:0;
+    color:#ECEBE8; font-size:10.5px; letter-spacing:0.1em; padding:8px 12px; cursor:pointer; text-transform:uppercase; }
+  .fit-chip.on { background:var(--acc); color:#101010; border-color:var(--acc);
+    box-shadow:0 0 10px rgba(222,246,90,0.4); }
+  .fit-lbl { font-size:9.5px; letter-spacing:0.22em; color:#8a8a85; text-transform:uppercase; margin-top:18px; }
+  .fit-tick { font-size:10.5px; letter-spacing:0.08em; color:#b8b7b0; line-height:2.1; margin-top:14px; min-height:120px; }
+  .fit-tick .done::after { content:" ✓"; color:var(--acc); }
+  .fit-stamp { border:1px solid var(--acc); color:var(--acc); display:inline-block;
+    font-size:12px; letter-spacing:0.24em; padding:10px 18px; margin-top:16px;
+    box-shadow:0 0 18px rgba(222,246,90,0.35); text-transform:uppercase; }
 </style>
 </head>
 <body>
@@ -397,6 +473,78 @@
 </div>
 
 <button id="topBtn" title="back to top" aria-label="scroll to top">↑</button>
+
+<!-- ================= THE FITTING (onboarding) ================= -->
+<div id="fitting">
+  <div class="fit-wrap">
+    <div class="fit-top">
+      <span><span class="dot"></span>TRM·LINK</span>
+      <span class="sig">[ THE FITTING ] · SIGNAL — <b id="fitLadder">NONE</b></span>
+    </div>
+
+    <!-- cover -->
+    <div class="fit-screen on" id="fitCover">
+      <div class="fit-logo">TRM</div>
+      <div class="fit-lead">a taste model, fitted to you.</div>
+      <div class="fit-aside">trm learns what you'd actually wear — then hunts grailed, the realreal and ssense for it, every day, only in your size.</div>
+      <div class="fit-aside">it can't read your mind yet. so first, a fitting.</div>
+      <div id="nucleusWrap"><canvas id="nucleus" width="300" height="300"></canvas></div>
+      <div class="nuc-stats"><span>SIGNALS <b id="nucSig">0</b></span><span>DENSITY <b id="nucDen">0.15</b></span><span>DRIFT <b id="nucDrift">WANDERING</b></span></div>
+      <div style="flex:1"></div>
+      <button class="fit-btn" id="fitBegin" type="button">begin the fitting</button>
+      <div class="fit-mono" style="text-align:center; margin-top:10px;">NO FORMS. YOU JUST DECIDE THINGS.</div>
+      <button class="fit-ghost" id="fitSkipAll" type="button">skip — the model starts blind</button>
+    </div>
+
+    <!-- the deck -->
+    <div class="fit-screen" id="fitDeck">
+      <div class="fit-aside" style="margin-top:12px;">swipe right to pull it. left to pass. go with your gut — the model is watching how you decide, not what you can afford.</div>
+      <div class="deck-zone" id="deckZone">
+        <div class="deck-read" id="deckRead"><div class="s" id="deckReadS"></div><div class="m" id="deckReadM"></div></div>
+      </div>
+      <div class="deck-acts">
+        <button class="p" id="deckPass" type="button">✕ pass</button>
+        <button class="l" id="deckPull" type="button">♥ pull</button>
+      </div>
+      <div class="fit-mono" style="text-align:center; margin-top:8px;">SIGNAL <span id="deckN">0</span>/40</div>
+      <button class="fit-ghost" id="deckDone" type="button" style="text-align:center;">enough — see the read →</button>
+    </div>
+
+    <!-- the read -->
+    <div class="fit-screen" id="fitRead">
+      <div class="fit-lead">that's a first sketch of your taste.</div>
+      <div class="fit-sheet" id="readSheet"></div>
+      <div class="fit-aside">the deck was calibration, not stock — you trained the eye, not the rack.</div>
+      <div class="fit-lbl">brands we'd bet on — tap to confirm</div>
+      <div class="fit-chips" id="readBrands"></div>
+      <div class="fit-lbl">the ceiling — per piece, resale prices</div>
+      <div class="fit-chips" id="readCeiling"></div>
+      <div style="flex:1"></div>
+      <button class="fit-btn" id="readNext" type="button" style="margin-top:18px;">lock it in</button>
+    </div>
+
+    <!-- measurements -->
+    <div class="fit-screen" id="fitFit">
+      <div class="fit-lead">stand still. this is the part that makes trm ruthless:</div>
+      <div class="fit-aside">nothing that doesn't fit you will ever reach your feed. not once. tap all that fit — close enough is fine.</div>
+      <div class="fit-lbl">chest / tops</div><div class="fit-chips" id="szTops"></div>
+      <div class="fit-lbl">waist</div><div class="fit-chips" id="szWaist"></div>
+      <div class="fit-lbl">shoes (us)</div><div class="fit-chips" id="szShoes"></div>
+      <div style="flex:1"></div>
+      <button class="fit-btn" id="fitNext" type="button" style="margin-top:18px;" disabled>lock sizes</button>
+    </div>
+
+    <!-- build / calibration theater -->
+    <div class="fit-screen" id="fitBuild">
+      <div class="fit-lead">your model is forming.</div>
+      <div id="nucleusWrap2"></div>
+      <div class="fit-tick" id="fitTick"></div>
+      <div style="text-align:center;"><span class="fit-stamp" id="fitStamp" style="display:none;">PROFILE FORMED</span></div>
+      <div style="flex:1"></div>
+      <button class="fit-btn" id="fitEnter" type="button" style="display:none;">enter your feed →</button>
+    </div>
+  </div>
+</div>
 
 <!-- scan config overlay + bottom sheet -->
 <div class="scan-overlay" id="scanOverlay"></div>
@@ -1141,6 +1289,295 @@
     const topBtn = document.getElementById("topBtn");
     window.addEventListener("scroll", () => topBtn.classList.toggle("show", window.scrollY > 320), { passive: true, signal: bootAbort.signal });
     topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }), LSN);
+
+    // ================= THE FITTING — onboarding ritual (dark world) =================
+    // Entry: new accounts (<20 signals, no done-flag). ?fitting=preview forces a DRY RUN
+    // (nothing written) so anyone can rehearse it; ?fitting=1 forces a real run.
+    (function fitting(){
+      const qp = new URLSearchParams(location.search).get("fitting");
+      const PREVIEW = qp === "preview";
+      let done = false; try { done = !!localStorage.getItem("trm.fittingDone"); } catch(e){}
+      const shouldRun = PREVIEW || qp === "1" || (Object.keys(SIG).length < 20 && !done);
+      if (!shouldRun) return;
+      const fit = document.getElementById("fitting");
+      fit.classList.add("on");
+      const $ = id => document.getElementById(id);
+      const screens = ["fitCover","fitDeck","fitRead","fitFit","fitBuild"];
+      function show(id){ screens.forEach(s => $(s).classList.toggle("on", s === id)); fit.scrollTop = 0; }
+
+      // ---- the nucleus: never empty — lightly dense from frame one, grows with every signal ----
+      const canvas = $("nucleus"), ctx = canvas.getContext("2d");
+      const CAP = 2600, FLOOR = 600, R = 128, CX = 150, CY = 150;
+      const parts = [];
+      const tally = {};   // dim -> value -> [loved, total]
+      function trec(dim, val, loved){
+        if (!val) return;
+        const d = tally[dim] = tally[dim] || {};
+        const t = d[val] = d[val] || [0, 0];
+        t[1]++; if (loved) t[0]++;
+      }
+      function arcParams(){
+        // arcs seeded from what the model is learning — two users' nuclei genuinely differ
+        let h = 7;
+        for (const d in tally) for (const v in tally[d]) h = (h * 31 + v.length * (tally[d][v][0] + 1)) % 9973;
+        return [0, 1, 2].map(i => ({ a: 0.4 + ((h >> (i * 3)) % 7) / 10, ph: ((h >> (i * 2)) % 628) / 100,
+                                     w: 1.5 + ((h >> i) % 3), ry: 0.35 + ((h >> (i * 4)) % 5) / 10 }));
+      }
+      function addParticles(n){
+        const arcs = arcParams();
+        for (let i = 0; i < n && parts.length < CAP; i++){
+          const onArc = Math.random() < 0.55, arc = arcs[(Math.random() * 3) | 0];
+          const t = Math.random() * Math.PI * 2;
+          let tx, ty;
+          if (onArc){
+            tx = CX + Math.cos(t * arc.w + arc.ph) * R * arc.a;
+            ty = CY + Math.sin(t) * R * arc.a * arc.ry + Math.sin(t * arc.w) * 18;
+          } else {
+            const rr = R * Math.sqrt(Math.random()), th = Math.random() * Math.PI * 2;
+            tx = CX + rr * Math.cos(th); ty = CY + rr * Math.sin(th);
+          }
+          parts.push({ x: CX + (Math.random() - 0.5) * 30, y: CY + (Math.random() - 0.5) * 30,
+                       tx, ty, j: Math.random() * 6.28 });
+        }
+      }
+      addParticles(FLOOR);                       // Charles's rule: lightly dense from the first frame
+      let raf;
+      function draw(){
+        ctx.fillStyle = "rgba(16,16,16,0.28)"; ctx.fillRect(0, 0, 300, 300);
+        const now = Date.now() / 900;
+        for (const p of parts){
+          p.j += 0.013;
+          p.x += (p.tx - p.x) * 0.03 + Math.sin(now + p.j) * 0.35;
+          p.y += (p.ty - p.y) * 0.03 + Math.cos(now * 0.8 + p.j) * 0.35;
+          const a = 0.25 + 0.55 * Math.abs(Math.sin(p.j));
+          ctx.fillStyle = "rgba(222,246,90," + a.toFixed(2) + ")";
+          ctx.fillRect(p.x, p.y, 1.4, 1.4);
+        }
+        raf = requestAnimationFrame(draw);
+      }
+      draw();
+      function retarget(){
+        const arcs = arcParams();
+        parts.forEach((p, i) => {
+          if (i % 2) return;                     // half the cloud migrates to the new read — visible learning
+          const arc = arcs[i % 3], t = (i / parts.length) * Math.PI * 2;
+          p.tx = CX + Math.cos(t * arc.w + arc.ph) * R * arc.a;
+          p.ty = CY + Math.sin(t) * R * arc.a * arc.ry + Math.sin(t * arc.w) * 18;
+        });
+      }
+      function nucStats(n){
+        $("nucSig").textContent = n;
+        $("nucDen").textContent = Math.max(0.15, parts.length / CAP).toFixed(2);
+        $("nucDrift").textContent = n < 10 ? "WANDERING" : n < 26 ? "SETTLING" : "STABLE";
+        $("fitLadder").textContent = n < 1 ? "NONE" : n < 10 ? "FAINT" : n < 20 ? "FORMING" : "READING";
+      }
+
+      // ---- the deck ----
+      let DECK = [], di = 0, swipes = 0;
+      const lovedCards = [];
+      async function loadDeck(){
+        try {
+          const r = await fetch("deck.json?v=" + Date.now());
+          const all = (await r.json()).cards.filter(c => c.image);
+          for (let i = all.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [all[i], all[j]] = [all[j], all[i]]; }
+          DECK = all.slice(0, 40);
+        } catch(e){ console.error(e); DECK = []; }
+      }
+      const zone = $("deckZone");
+      function cardEl(c){
+        const el = document.createElement("div");
+        el.className = "deck-card";
+        el.innerHTML = '<div class="im" style="background-image:url(' + safeUrl(c.image) + ')"></div>' +
+          '<div class="nm">' + esc(c.title) + '</div><div class="ey">SPECIMEN ' + String(di + 1).padStart(2, "0") + ' / 40 — [ CALIBRATION ]</div>' +
+          '<div class="deck-stamp pass">PASS</div><div class="deck-stamp pull">PULL</div>';
+        return el;
+      }
+      let cur = null;
+      function dealCard(){
+        zone.querySelectorAll(".deck-card").forEach(e => e.remove());
+        if (di >= DECK.length || swipes >= 40){ return finishDeck(); }
+        if (DECK[di + 1]){ const b = cardEl(DECK[di + 1]); b.classList.add("behind"); zone.appendChild(b); }
+        cur = cardEl(DECK[di]); zone.appendChild(cur);
+        attachDrag(cur);
+        $("deckN").textContent = swipes;
+        $("deckDone").style.display = swipes >= 24 ? "" : "none";
+      }
+      function attachDrag(el){
+        let x0 = 0, y0 = 0, dx = 0, dragging = false;
+        el.addEventListener("pointerdown", e => { dragging = true; x0 = e.clientX; y0 = e.clientY; el.setPointerCapture(e.pointerId); });
+        el.addEventListener("pointermove", e => {
+          if (!dragging) return;
+          dx = e.clientX - x0;
+          const dy = e.clientY - y0;
+          el.style.transform = "translate(" + dx + "px," + dy * 0.3 + "px) rotate(" + dx * 0.05 + "deg)";
+          el.querySelector(".deck-stamp.pull").style.opacity = Math.max(0, Math.min(1, dx / 90));
+          el.querySelector(".deck-stamp.pass").style.opacity = Math.max(0, Math.min(1, -dx / 90));
+        });
+        el.addEventListener("pointerup", () => {
+          if (!dragging) return; dragging = false;
+          if (Math.abs(dx) > 90) commit(dx > 0);
+          else { el.style.transition = "transform 250ms"; el.style.transform = ""; setTimeout(() => el.style.transition = "", 260); }
+          dx = 0;
+        });
+      }
+      function commit(loved){
+        const c = DECK[di];
+        if (cur){ cur.style.transition = "transform 320ms ease-out, opacity 320ms";
+          cur.style.transform = "translate(" + (loved ? 520 : -520) + "px,-40px) rotate(" + (loved ? 24 : -24) + "deg)";
+          cur.style.opacity = "0"; }
+        swipes++; di++;
+        const a = c.attrs || {};
+        trec("silhouette", a.silhouette, loved); trec("branding", a.branding, loved); trec("weight", a.weight, loved);
+        (a.mood || []).forEach(m => trec("mood", m, loved));
+        (a.palette || []).forEach(p => trec("palette", p, loved));
+        (a.materials || []).forEach(m => trec("material", m, loved));
+        if (loved) lovedCards.push(c);
+        addParticles(55); if (swipes % 5 === 0) retarget();
+        nucStats(swipes);
+        if (!PREVIEW){
+          sb.from("signals").upsert({ user_id: userId, url: c.url, action: loved ? "liked" : "passed",
+            brand: c.brand, category: c.category, reasons: ["deck"], price: c.price },
+            { onConflict: "user_id,url" }).then(({ error }) => { if (error) console.error(error); });
+          SIG[c.url] = loved ? "liked" : "passed";
+        }
+        if (swipes === 40 || di >= DECK.length) return setTimeout(finishDeck, 380);
+        if (swipes % 10 === 0) milestone();
+        setTimeout(dealCard, 340);
+      }
+      $("deckPass").addEventListener("click", () => cur && commit(false), LSN);
+      $("deckPull").addEventListener("click", () => cur && commit(true), LSN);
+      $("deckDone").addEventListener("click", finishDeck, LSN);
+      const READS = { silhouette: v => "you keep pulling " + v + " cuts.", mood: v => v + " keeps winning.",
+        palette: v => v + " runs through everything you pull.", branding: v => v === "none" || v === "subtle" ? "you pass on logos almost every time." : "you don't mind a loud logo.",
+        material: v => v + " gets you every time.", weight: v => v === "light" ? "light layers. the model sees summer." : v + "-weight pieces lead." };
+      function milestone(){
+        let best = null;
+        for (const dim in tally) for (const v in tally[dim]){
+          const [l, t] = tally[dim][v];
+          if (t >= 6){ const share = l / t;
+            if (share >= 0.7 || share <= 0.3){
+              const conf = Math.abs(share - 0.5);
+              if (!best || conf > best.conf) best = { dim, v, share, conf };
+            } }
+        }
+        $("deckReadS").textContent = best ? READS[best.dim](best.v.replace(/-/g, " ")) : "still triangulating. keep going.";
+        $("deckReadM").textContent = best ? (best.dim + " read — " + best.v).toUpperCase() : "SIGNAL — FORMING";
+        $("deckRead").classList.add("on");
+        setTimeout(() => $("deckRead").classList.remove("on"), 1600);
+      }
+
+      // ---- the read ----
+      function top(dim, n, min){ return Object.entries(tally[dim] || {}).filter(([, t]) => t[1] >= (min || 2))
+        .sort((a, b) => b[1][0] / b[1][1] - a[1][0] / a[1][1]).slice(0, n).map(([v]) => v); }
+      const PALHEX = { black:"#1a1a1a", white:"#f2f2ee", cream:"#eee6d4", grey:"#9a9a96", charcoal:"#3c3c3a", navy:"#26324a",
+        olive:"#6a6f4c", brown:"#5f4a38", tan:"#c8a97e", beige:"#d6c9ae", red:"#a33a2e", burgundy:"#5e2431",
+        green:"#3f5d47", blue:"#3a5f8a", yellow:"#d9c34a", orange:"#c87b3a", pink:"#d79ba8", purple:"#6d5480", multicolor:"#888", pastel:"#cfc6d8" };
+      function finishDeck(){
+        if ($("fitRead").classList.contains("on")) return;
+        const moods = top("mood", 3), sils = top("silhouette", 2), pals = top("palette", 4);
+        const stAvg = lovedCards.length ? lovedCards.reduce((s, c) => s + (c.attrs.statement || 3), 0) / lovedCards.length : 3;
+        $("readSheet").innerHTML =
+          '<div class="row"><span class="k">sample</span><span class="v">' + swipes + ' verdicts</span></div>' +
+          '<div class="row"><span class="k">mood</span><span class="v">' + (moods.join(" · ") || "undecided") + '</span></div>' +
+          '<div class="row"><span class="k">silhouette</span><span class="v">' + (sils.join(" → ") || "undecided") + '</span></div>' +
+          '<div class="row"><span class="k">palette</span><span class="v">' + pals.map(p => '<span class="swatch" style="background:' + (PALHEX[p] || "#777") + '"></span>').join("") + '</span></div>' +
+          '<div class="row"><span class="k">statement</span><span class="v">' + (stAvg < 2.4 ? "restrained" : stAvg < 3.4 ? "balanced" : "loud") + '</span></div>';
+        const brands = [...new Set(lovedCards.map(c => c.brand).filter(Boolean))].slice(0, 6);
+        $("readBrands").innerHTML = brands.map(b => '<button class="fit-chip" data-b="' + esc(b) + '">' + esc(b) + '</button>').join("") || '<span class="fit-mono">let the deck speak — none yet</span>';
+        $("readBrands").querySelectorAll(".fit-chip").forEach(ch => ch.addEventListener("click", () => ch.classList.toggle("on"), LSN));
+        const CEIL = ["under $200", "$200–500", "$500–1k", "$1k+", "no ceiling"];
+        $("readCeiling").innerHTML = CEIL.map(c => '<button class="fit-chip" data-c="' + c + '">' + c + '</button>').join("");
+        $("readCeiling").querySelectorAll(".fit-chip").forEach(ch => ch.addEventListener("click", () => {
+          $("readCeiling").querySelectorAll(".fit-chip").forEach(x => x.classList.remove("on")); ch.classList.add("on"); }, LSN));
+        show("fitRead");
+      }
+      $("readNext").addEventListener("click", () => { buildSizeChips(); show("fitFit"); }, LSN);
+
+      // ---- measurements ----
+      function chipGroup(el, values){
+        el.innerHTML = values.map(v => '<button class="fit-chip" data-v="' + v + '">' + v + '</button>').join("");
+        el.querySelectorAll(".fit-chip").forEach(ch => ch.addEventListener("click", () => { ch.classList.toggle("on"); checkFit(); }, LSN));
+      }
+      function buildSizeChips(){
+        chipGroup($("szTops"), ["xs", "s", "m", "l", "xl", "xxl"]);
+        chipGroup($("szWaist"), ["28", "30", "32", "34", "36", "38", "40", "42", "44"]);
+        chipGroup($("szShoes"), ["8", "9", "10", "11", "12", "13", "14", "15"]);
+      }
+      function picked(el){ return [...el.querySelectorAll(".fit-chip.on")].map(c => c.dataset.v); }
+      function checkFit(){ $("fitNext").disabled = !(picked($("szTops")).length && picked($("szWaist")).length && picked($("szShoes")).length); }
+      $("fitNext").addEventListener("click", async () => {
+        const tops = picked($("szTops")), waist = picked($("szWaist")), shoesUs = picked($("szShoes"));
+        const shoes = [...new Set(shoesUs.flatMap(n => [n, String(+n + 33)]))];   // us + eu equivalents
+        const brands = [...$("readBrands").querySelectorAll(".fit-chip.on")].map(c => c.dataset.b);
+        const ceiling = $("readCeiling").querySelector(".fit-chip.on")?.dataset.c || "";
+        if (!PREVIEW){
+          try {
+            const { data: t } = await sb.from("taste").select("payload").eq("user_id", userId).single();
+            const p = (t && t.payload) || {};
+            p.sizes = { tops, waist, shoes };
+            if (ceiling) p.ceiling = ceiling;
+            const bl = ((p.brands = p.brands || {}).loved = p.brands.loved || []);
+            brands.forEach(b => { if (!bl.some(x => x.toLowerCase() === b.toLowerCase())) bl.push(b); });
+            (p.meta = p.meta || {}).fittingAt = new Date().toISOString();
+            p.fittingDone = true;
+            await sb.from("taste").update({ payload: p }).eq("user_id", userId);
+          } catch(e){ console.error(e); }
+        }
+        startBuild();
+      }, LSN);
+
+      // ---- calibration theater + real first build ----
+      async function startBuild(){
+        show("fitBuild");
+        $("nucleusWrap2").appendChild($("nucleusWrap"));   // the nucleus moves to the finale
+        addParticles(CAP);                                  // fill to full density
+        retarget();
+        const lines = [
+          "COMPILING VERDICTS ..................... " + swipes + " LOGGED",
+          "WEIGHTING ATTRIBUTES ................... SILHOUETTE / PALETTE / MOOD",
+          "LOCKING SIZES .......................... " + (picked($("szTops")).join(" · ").toUpperCase() || "—"),
+          "SCANNING THE RACKS AGAINST YOU ......... RUNNING",
+          "FIRST PULL ............................. COMPOSING",
+        ];
+        const tick = $("fitTick"); tick.innerHTML = "";
+        lines.forEach((l, i) => setTimeout(() => {
+          const d = document.createElement("div"); d.textContent = l; tick.appendChild(d);
+          if (i > 0) tick.children[i - 1].classList.add("done");
+        }, 700 * i));
+        const finish = () => {
+          [...tick.children].forEach(c => c.classList.add("done"));
+          $("fitStamp").style.display = "inline-block";
+          $("fitLadder").textContent = "READING";
+          $("fitEnter").style.display = "";
+        };
+        if (PREVIEW) return setTimeout(finish, 4200);
+        let before = null;
+        try { const { data: f0 } = await sb.from("feeds").select("built_at").eq("user_id", userId).maybeSingle(); before = f0 && f0.built_at; } catch(e){}
+        try { await sb.rpc("run_conductor", { p_sources: "grailed", p_min_new: 25 }); } catch(e){ console.error(e); }
+        let tries = 0;
+        const iv = setInterval(async () => {
+          tries++;
+          try {
+            const { data: f } = await sb.from("feeds").select("built_at").eq("user_id", userId).maybeSingle();
+            if (f && f.built_at && f.built_at !== before){ clearInterval(iv); finish(); return; }
+          } catch(e){}
+          if (tries >= 30){ clearInterval(iv); finish(); }   // 6 min cap — enter anyway, feed follows
+        }, 12000);
+      }
+      $("fitEnter").addEventListener("click", () => {
+        try { localStorage.setItem("trm.fittingDone", "1"); } catch(e){}
+        cancelAnimationFrame(raf);
+        if (PREVIEW){ fit.classList.remove("on"); return; }
+        location.href = location.pathname;                   // clean reload into the paper feed
+      }, LSN);
+      $("fitSkipAll").addEventListener("click", () => {
+        try { localStorage.setItem("trm.fittingDone", "1"); } catch(e){}
+        cancelAnimationFrame(raf);
+        fit.classList.remove("on");
+      }, LSN);
+      $("fitBegin").addEventListener("click", async () => { await loadDeck(); show("fitDeck"); dealCard(); }, LSN);
+      nucStats(0);
+    })();
 
     // ---- REALTIME: reconcile signals across devices (don't fight local optimistic state) ----
     if (sigChannel) { sb.removeChannel(sigChannel); sigChannel = null; }

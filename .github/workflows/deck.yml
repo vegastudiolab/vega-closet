@@ -1,0 +1,31 @@
+name: trm deck regen
+
+on:
+  schedule:
+    - cron: '0 11 * * 1'   # mondays — rotate dead listings out of the onboarding deck
+  workflow_dispatch:
+
+concurrency:
+  group: trm-deck
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: curate the deck
+        env:
+          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: python pipeline/build_deck.py
+      - name: commit if changed
+        run: |
+          git config user.name "trm-deck-bot"
+          git config user.email "noreply@trm.style"
+          git add deck.json
+          git diff --cached --quiet || (git commit -m "chore: weekly deck rotation" && git push)

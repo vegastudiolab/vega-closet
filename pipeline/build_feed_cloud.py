@@ -55,7 +55,7 @@ def fetch_all(table, select, extra_qs=""):
 
 def norm(s): return (s or "").strip().lower()
 
-_SKIP = {"new","gently used","in-size","in size","value","grail","#1 brand","loved brand",
+_SKIP = {"new","gently used","in-size","in size","value","grail","#1 brand","loved brand","deck","unrated",
          "your basics brand","grailed","ssense","the realreal","therealreal",
          "xs","s","m","l","xl","xxl","xxxl","os"}
 def is_style(t):
@@ -135,6 +135,9 @@ def build_for_user(uid, taste, catalog):
     for x in sigs:
         c0 = cat_by_url.get(x["url"])
         if c0 and c0.get("attrs"):
+            if "deck" in (x.get("reasons") or []):
+                # onboarding deck hid brand + price — those features would learn noise
+                c0 = dict(c0); c0["price"] = None; c0["brand"] = ""
             labeled.append((1 if x["action"] in ("liked", "carted") else 0, c0))
     # prior-anchored fit: works at ANY history size — pure house-prior at 0 taps, personal as they grow
     weights, pairs = taste_model.fit_user_weights(labeled, prior=PRIOR)
