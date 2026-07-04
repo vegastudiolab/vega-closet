@@ -220,7 +220,8 @@ def build_for_user(uid, taste, catalog):
     # old per-item pass, but bounded: only the top N un-acted items, and each (user,item) verdict
     # is cached in user_scores so rebuilds never re-judge. This is what keeps quality vision-grade
     # while the per-user cost stays flat as the catalog and user count grow. ----
-    brief = taste.get("visualBrief") if isinstance(taste.get("visualBrief"), str) else None
+    vb = taste.get("visualBrief")
+    brief = vb if isinstance(vb, str) else (vb.get("brief") if isinstance(vb, dict) and isinstance(vb.get("brief"), str) else (json.dumps(vb)[:4000] if vb else None))
     n_stage2 = 0
     if ANTHROPIC_KEY and brief and weights:
         cache = {r["url"]: (r.get("vfit"), r.get("tags") or []) for r in
