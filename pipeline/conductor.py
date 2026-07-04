@@ -98,6 +98,46 @@ def in_size(cat, s, brand=""):
         return bool(re.search(r"\b(36|37|38|54|56)\b", s) or re.search(r"\b(l|xl|xxl)\b", s))
     return bool(re.search(r"\b(l|xl|xxl)\b", s) or re.search(r"\b(52|54|56)\b", s))   # tops / outerwear
 
+# ---------- seasonal rotation (rank-time only — stored scores stay pure vision) ----------
+# Charles travels LA + builds wardrobe year-round: LIGHT jackets stay welcome in summer,
+# only heavy winterwear steps back. Explicit category scans bypass all of this.
+SEASONS = {12:"winter",1:"winter",2:"winter",3:"spring",4:"spring",5:"spring",
+           6:"summer",7:"summer",8:"summer",9:"fall",10:"fall",11:"fall"}
+SEASON_WEIGHTS = {
+    "summer": {"tops":0.40,"bottoms":0.25,"outerwear":0.20,"footwear":0.15},
+    "spring": {"tops":0.35,"bottoms":0.25,"outerwear":0.25,"footwear":0.15},
+    "fall":   {"outerwear":0.35,"tops":0.30,"bottoms":0.20,"footwear":0.15},
+    "winter": {"outerwear":0.40,"tops":0.25,"bottoms":0.20,"footwear":0.15},
+}
+_HEAVY = re.compile(r"shearling|puffer|parka|\bdown\b|\bfur\b|overcoat|heavy ?wool|fleece|quilted", re.I)
+_LIGHT = re.compile(r"\blight|windbreaker|coach|track|nylon|denim jacket|shirt jacket|overshirt|\bvest\b|mesh|linen|short ?sleeve|\btank\b|\btee\b", re.I)
+def season_adj(it):
+    if SEASONS[date.today().month] not in ("summer","spring"): return 0.0
+    t = (it.get("title") or "") + " " + " ".join(it.get("reasons") or [])
+    if _HEAVY.search(t): return -0.08
+    if _LIGHT.search(t): return 0.04
+    return 0.0
+def season_allocate(rows, n):
+    # cap to n with per-category slots so one category can't swallow the whole scan
+    season = SEASONS[date.today().month]
+    w = SEASON_WEIGHTS[season]
+    rank = lambda r: -((r.get("base_score") or 0) + season_adj(r))
+    by = {}
+    for r in rows: by.setdefault(r.get("category"), []).append(r)
+    for lst in by.values(): lst.sort(key=rank)
+    picked_ids, picked = set(), []
+    for c, lst in by.items():
+        for r in lst[:max(1, round(n * w.get(c, 0.10)))]:
+            picked.append(r); picked_ids.add(id(r))
+    picked.sort(key=rank)
+    picked = picked[:n]; picked_ids = {id(r) for r in picked}
+    if len(picked) < n:                                            # thin categories -> backfill with global best
+        rest = sorted((r for r in rows if id(r) not in picked_ids), key=rank)
+        picked += rest[:n - len(picked)]
+    print(f"seasonal allocation ({season}): " + ", ".join(
+        f"{c}:{sum(1 for r in picked if r.get('category')==c)}" for c in sorted(by)))
+    return picked
+
 _TAGS = ["leather","wide-leg","wide leg","bootcut","flared","cargo","denim","oversized","boxy",
          "longline","draped","shearling","fur","nylon","tech","padded","quilted","distressed",
          "graphic","knit","hoodie","bomber","trench","parka","moto","biker","satin","mesh","patchwork","rivet"]
@@ -504,10 +544,14 @@ def main():
     # and here we cap at exactly N — his best N by taste score, or the newest N on a raw scan.
     # Under N comes back only when that's all the sources had. (0 = uncapped, daily cron.)
     if MIN_NEW and len(rows) > MIN_NEW:
-        if not NO_VISION:
-            rows.sort(key=lambda r: -(r.get("base_score") or 0))
-        print(f"target {MIN_NEW}: keeping the {'top-scored' if not NO_VISION else 'newest'} {MIN_NEW} of {len(rows)} found")
-        rows = rows[:MIN_NEW]
+        if not NO_VISION and not CATEGORY:
+            # general rated scan: seasonal per-category slots stop jacket-domination
+            rows = season_allocate(rows, MIN_NEW)
+        else:
+            if not NO_VISION:
+                rows.sort(key=lambda r: -(r.get("base_score") or 0))
+            rows = rows[:MIN_NEW]
+        print(f"target {MIN_NEW}: kept {len(rows)} of what was found")
 
     inserted = 0
     for i in range(0, len(rows), 500):

@@ -57,11 +57,26 @@ def is_style(t):
     if re.search(r"size|waist|^us \d|^eu \d|^it \d|^uk \d", t): return False
     return True
 
-SECTIONS = [("outerwear","outerwear","leather, denim, shearling and tech, ranked"),
-            ("bottoms","bottoms","36-38 only, leather and wide-leg lead"),
-            ("tops","tops + knits","tees, hoodies, knits, shirts"),
-            ("footwear","footwear","in-size only, us 14-15 / eu 47-48 (+ balenciaga 46)"),
-            ("accessories","accessories","belts in your waist, plus one-size pieces — from accessories scans")]
+_ALL_SECTIONS = {
+    "outerwear":  ("outerwear","leather, denim, shearling and tech, ranked"),
+    "bottoms":    ("bottoms","36-38 only, leather and wide-leg lead"),
+    "tops":       ("tops + knits","tees, hoodies, knits, shirts"),
+    "footwear":   ("footwear","in-size only, us 14-15 / eu 47-48 (+ balenciaga 46)"),
+    "accessories":("accessories","belts in your waist, plus one-size pieces — from accessories scans"),
+}
+# seasonal section order: summer/spring lead with tops, light layers still welcome;
+# fall/winter put outerwear back on top
+_SEASON = {12:"winter",1:"winter",2:"winter",3:"spring",4:"spring",5:"spring",
+           6:"summer",7:"summer",8:"summer",9:"fall",10:"fall",11:"fall"}[date.today().month]
+_ORDER = {
+    "summer": ["tops","bottoms","footwear","outerwear","accessories"],
+    "spring": ["tops","outerwear","bottoms","footwear","accessories"],
+    "fall":   ["outerwear","tops","bottoms","footwear","accessories"],
+    "winter": ["outerwear","tops","bottoms","footwear","accessories"],
+}[_SEASON]
+SECTIONS = [(k,) + _ALL_SECTIONS[k] for k in _ORDER]
+_HEAVY = re.compile(r"shearling|puffer|parka|\bdown\b|\bfur\b|overcoat|heavy ?wool|fleece|quilted", re.I)
+_LIGHT = re.compile(r"\blight|windbreaker|coach|track|nylon|denim jacket|shirt jacket|overshirt|\bvest\b|mesh|linen|short ?sleeve|\btank\b|\btee\b", re.I)
 
 GATE_MIN_TAPS  = 15    # a brand-x-category combo needs this many decisions before it can be gated
 GATE_MAX_RATE  = 0.10  # smoothed like-rate below this -> gated lane
@@ -113,6 +128,12 @@ def build_for_user(uid, taste, catalog):
             if liked_tags.get(rn):  s += min(0.05 * liked_tags[rn], 0.25)
             if passed_tags.get(rn): s -= min(0.05 * passed_tags[rn], 0.25)
         if soft and isinstance(it.get("price"), (int, float)) and it["price"] > soft * 1.5: s -= 0.06
+        # seasonal nudge (summer/spring): heavy winterwear steps back, LA-weight layers step up.
+        # small on purpose — a grail shearling still surfaces, it just doesn't dominate July.
+        if _SEASON in ("summer", "spring"):
+            t = (it.get("title") or "") + " " + " ".join(it.get("reasons") or [])
+            if _HEAVY.search(t): s -= 0.08
+            elif _LIGHT.search(t): s += 0.04
         return round(s, 4)
 
     # footwear sizes changed 2026-07-03: US 14-15 / EU 47-48 only (13s were taste-training taps,
@@ -170,8 +191,9 @@ def build_for_user(uid, taste, catalog):
     total = sum(1 for it in active if not it["isLiked"])
     n_liked = sum(1 for it in active if it["isLiked"]); n_arch = sum(1 for it in items if it["isArchived"])
     plat = Counter(it.get("platform","?") for it in active if not it["isLiked"])
-    note = ("%d new to review, %d liked, %d archived. one filter bar: show (feed / liked / archived / all) stacks with "
-            "category, size, price and source. love a piece and it moves to liked; pass it to archived.") % (total, n_liked, n_arch)
+    note = ("%d new to review, %d liked, %d archived. %s rotation: %s lead. one filter bar: show (feed / liked / archived / all) "
+            "stacks with category, size, price and source. love a piece and it moves to liked; pass it to archived.") % (
+            total, n_liked, n_arch, _SEASON, _ORDER[0])
     feed = {"date":TODAY,"runId":TODAY+"-cloud","scanned":len(catalog),
             "platforms":{"grailed":plat.get("grailed",0),"therealreal":plat.get("therealreal",0),"ssense":plat.get("ssense",0)},
             "note":note,"sections":secout}
