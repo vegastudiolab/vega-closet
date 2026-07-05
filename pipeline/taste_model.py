@@ -74,7 +74,8 @@ def make_brief_addendum(anthropic_key, uploads_by_bucket):
     sem = {"receipts": "he BOUGHT these (money = strongest signal: fit, fabric, formality baseline)",
            "rotation": "he OWNS and wears these now (the wardrobe being built around)",
            "grails":   "he hunted these (proven obsession)",
-           "dreams":   "he aspires to these (direction of travel, statement ceiling — NOT buy-now taste)"}
+           "looks":    "FULL OUTFITS he assembled — read the overall styling, silhouette combinations and "
+                       "aesthetic direction (how he wants pieces to sit together), NOT any single garment"}
     lines = []
     for b, items in uploads_by_bucket.items():
         if items:

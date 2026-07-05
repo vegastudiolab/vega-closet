@@ -141,9 +141,10 @@ def build_for_user(uid, taste, catalog):
     deep_gated = sorted(b for b, (l, n) in b_stat.items() if b and n >= GATE_MIN_TAPS and smoothed(l, n) < GATE_MAX_RATE)
 
     # ---- the archive: digest any new wardrobe uploads RIGHT NOW, so they shape this very build.
-    # Photos -> attributes -> synthetic positive taps (receipts/rotation 3x, grails 2x, dreams 1x)
+    # Photos -> attributes -> synthetic positive taps (receipts/rotation 3x, grails 2x, looks 1x)
+    # "looks" = full outfits, multi-piece: weak in the item-level fit (noisy), strong in the brief.
     # -> and a rubric addendum for stage-2. No overnight wait: the next scan is the trigger. ----
-    UPLOAD_W = {"receipts": 3, "rotation": 3, "grails": 2, "dreams": 1}
+    UPLOAD_W = {"receipts": 3, "rotation": 3, "grails": 2, "looks": 1}
     up_store = (taste.setdefault("uploads", {"digested": []}))
     seen_paths = {u["path"] for u in up_store["digested"]}
     new_uploads = []
@@ -154,7 +155,7 @@ def build_for_user(uid, taste, catalog):
             names = []
             if st_l == 200 and isinstance(listing, list):
                 # top level lists the bucket folders; walk each
-                for folder in ("receipts", "grails", "dreams", "rotation"):
+                for folder in ("receipts", "grails", "looks", "rotation"):
                     st_f, objs = api("POST", "/storage/v1/object/list/wardrobe",
                                      {"prefix": f"{uid}/{folder}", "limit": 200})
                     if st_f == 200 and isinstance(objs, list):

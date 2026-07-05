@@ -594,7 +594,7 @@
       <div class="arch-grid">
         <div class="arch-tile" data-bucket="receipts"><div class="t">[ the receipts ]</div><div class="d">what you actually bought. money is the loudest taste signal there is.</div><div class="c" data-count>tap to add</div></div>
         <div class="arch-tile" data-bucket="grails"><div class="t">[ grails ]</div><div class="d">the pieces you hunted down — or the ones that got away.</div><div class="c" data-count>tap to add</div></div>
-        <div class="arch-tile" data-bucket="dreams"><div class="t">[ the dream rack ]</div><div class="d">never owned. always wanted. no budget on this shelf.</div><div class="c" data-count>tap to add</div></div>
+        <div class="arch-tile" data-bucket="looks"><div class="t">[ full looks ]</div><div class="d">whole outfits you'd wear head to toe. pinterest, styling apps, saved fits — however you pull a look together.</div><div class="c" data-count>tap to add</div></div>
         <div class="arch-tile" data-bucket="rotation"><div class="t">[ in rotation ]</div><div class="d">shoot the hangers. blurry is fine — we're reading shapes, not portraits.</div><div class="c" data-count>tap to add</div></div>
       </div>
       <div class="fit-aside" style="font-size:12.5px;">your photos train your model and nothing else. private, deletable, never shown to anyone.</div>
@@ -629,7 +629,7 @@
     <div class="arch-grid">
       <div class="arch-tile" data-mbucket="receipts"><div class="t">[ the receipts ]</div><div class="d">what you actually bought.</div><div class="c" data-mcount>tap to add</div></div>
       <div class="arch-tile" data-mbucket="grails"><div class="t">[ grails ]</div><div class="d">hunted down, or got away.</div><div class="c" data-mcount>tap to add</div></div>
-      <div class="arch-tile" data-mbucket="dreams"><div class="t">[ the dream rack ]</div><div class="d">always wanted. no budget.</div><div class="c" data-mcount>tap to add</div></div>
+      <div class="arch-tile" data-mbucket="looks"><div class="t">[ full looks ]</div><div class="d">whole outfits, styled — from any app.</div><div class="c" data-mcount>tap to add</div></div>
       <div class="arch-tile" data-mbucket="rotation"><div class="t">[ in rotation ]</div><div class="d">what you own right now.</div><div class="c" data-mcount>tap to add</div></div>
     </div>
     <div class="fit-aside" style="font-size:12.5px;">private, deletable, never shown to anyone. absorbed on your next scan.</div>
@@ -1852,7 +1852,7 @@
       }
       // ---- the archive: four buckets -> private wardrobe storage, compressed client-side ----
       let archBucket = null;
-      const archCounts = { receipts: 0, grails: 0, dreams: 0, rotation: 0 };
+      const archCounts = { receipts: 0, grails: 0, looks: 0, rotation: 0 };
       document.querySelectorAll(".arch-tile").forEach(tile => tile.addEventListener("click", () => {
         archBucket = tile.dataset.bucket;
         $("archInput").click();
