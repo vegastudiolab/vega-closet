@@ -1090,10 +1090,19 @@
       if (!rows || rows.length < 1000) break;
     }
 
+    // cleared-from-view urls: the server drops these on the next rebuild, but until then the stored
+    // feed payload still contains them — so honor the clear on load too, or reopening brings them back.
+    const DISMISSED = new Set();
+    try {
+      const { data: tr } = await sb.from('taste').select('payload').eq('user_id', userId).single();
+      ((tr && tr.payload && tr.payload.signals && tr.payload.signals.dismissedUrls) || []).forEach(u => DISMISSED.add(u));
+    } catch(e){ console.error(e); }
+
     function applyStates(){
       document.querySelectorAll(".card").forEach(c=>{
         const url = decodeURIComponent(c.dataset.url||"");
         const a = actOf(url);
+        if (!a && DISMISSED.has(url)){ c.remove(); return; }   // cleared from view — stays gone until a scan re-finds it
         if (a==="liked")       { c.dataset.liked="1"; c.dataset.carted="0"; c.dataset.archived="0"; }   // honor prior taps on load
         else if (a==="carted") { c.dataset.liked="1"; c.dataset.carted="1"; c.dataset.archived="0"; }   // cart = loved + purchase candidate
         else if (a==="passed") { c.dataset.archived="1"; c.dataset.liked="0"; c.dataset.carted="0"; }
