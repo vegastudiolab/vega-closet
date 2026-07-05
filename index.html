@@ -328,13 +328,15 @@
                  padding:13px 0; cursor:pointer; }
 
   /* ================= THE FITTING (onboarding — dark world; the feed stays paper) ================= */
-  #fitting { position:fixed; inset:0; z-index:200; display:none; background:#101010; color:#ECEBE8;
+  #fitting, #tasteMod { position:fixed; inset:0; z-index:200; display:none; background:#101010; color:#ECEBE8;
     font-family:var(--mono); overflow-y:auto; -webkit-overflow-scrolling:touch; }
-  #fitting.on { display:block; }
-  #fitting::before { content:""; position:fixed; inset:0; pointer-events:none;
+  #fitting.on, #tasteMod.on { display:block; animation:fadeUp 380ms var(--ease) both; }
+  #fitting::before, #tasteMod::before { content:""; position:fixed; inset:0; pointer-events:none;
     background-image:linear-gradient(rgba(236,235,232,0.045) 1px, transparent 1px),
                      linear-gradient(90deg, rgba(236,235,232,0.045) 1px, transparent 1px);
     background-size:43px 43px; }
+  #modelNucWrap { position:relative; width:300px; margin:6px auto 2px; }
+  #modelNuc { display:block; margin:0 auto; }
   .fit-wrap { position:relative; max-width:520px; margin:0 auto; min-height:100%;
     display:flex; flex-direction:column; padding:calc(14px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); }
   .fit-top { display:flex; justify-content:space-between; align-items:center; font-size:10px;
@@ -485,6 +487,7 @@
     <div class="moremenu">
       <button class="sigbtn" id="moreBtn" type="button" title="more" aria-label="more">⋯</button>
       <div class="morepop" id="morePop">
+        <button class="sigbtn" id="openModel" type="button">your model</button>
         <button class="sigbtn" id="hidePass" type="button">hide passed</button>
         <button class="sigbtn" id="clearFeed" type="button">clear feed</button>
         <button class="signout" id="signOut" type="button">sign out</button>
@@ -600,6 +603,40 @@
       <div style="flex:1"></div>
       <button class="fit-btn" id="fitEnter" type="button" style="display:none;">enter your feed →</button>
     </div>
+  </div>
+</div>
+
+<!-- ================= YOUR MODEL (taste module — keep feeding it after the fitting) ================= -->
+<div id="tasteMod">
+  <div class="fit-wrap">
+    <div class="fit-top">
+      <span>[ YOUR MODEL ]</span>
+      <button class="fit-ghost" id="modelClose" type="button" style="padding:0;text-decoration:none;font-size:16px;">✕</button>
+    </div>
+    <div class="fit-lead" style="margin-top:10px;">this is your taste, alive.</div>
+    <div class="fit-aside">every house you name and every piece you add sharpens it. changes shape your next scan.</div>
+    <div id="modelNucWrap">
+      <canvas id="modelNuc" width="300" height="300"></canvas>
+      <div class="nuc-stats"><span>SIGNALS <b id="modelSig">0</b></span><span>ARCHIVE <b id="modelArch">0</b></span><span>DRIFT <b id="modelDrift">STABLE</b></span></div>
+    </div>
+
+    <div class="fit-lbl">houses you trust — tap to add or remove</div>
+    <input class="houses-search" id="modelSearch" placeholder="search — rick owens, lemaire, our legacy…" autocomplete="off" />
+    <div class="houses-list" id="modelHouses"></div>
+    <div class="fit-mono" style="margin-top:6px;"><span id="modelHouseCount">0</span> HOUSES LOGGED</div>
+
+    <div class="fit-lbl">the archive — add more, anytime</div>
+    <div class="arch-grid">
+      <div class="arch-tile" data-mbucket="receipts"><div class="t">[ the receipts ]</div><div class="d">what you actually bought.</div><div class="c" data-mcount>tap to add</div></div>
+      <div class="arch-tile" data-mbucket="grails"><div class="t">[ grails ]</div><div class="d">hunted down, or got away.</div><div class="c" data-mcount>tap to add</div></div>
+      <div class="arch-tile" data-mbucket="dreams"><div class="t">[ the dream rack ]</div><div class="d">always wanted. no budget.</div><div class="c" data-mcount>tap to add</div></div>
+      <div class="arch-tile" data-mbucket="rotation"><div class="t">[ in rotation ]</div><div class="d">what you own right now.</div><div class="c" data-mcount>tap to add</div></div>
+    </div>
+    <div class="fit-aside" style="font-size:12.5px;">private, deletable, never shown to anyone. absorbed on your next scan.</div>
+    <input type="file" id="modelArchInput" accept="image/*" multiple style="display:none;" />
+    <div style="flex:1"></div>
+    <button class="fit-btn" id="modelSave" type="button" style="margin-top:16px;">save &amp; close</button>
+    <div class="fit-mono" style="text-align:center;margin-top:10px;" id="modelSaved"></div>
   </div>
 </div>
 
@@ -1165,6 +1202,124 @@
         setTimeout(()=>{ ok.textContent=""; },5000);
       } catch(e){ console.error(e); ok.textContent = "couldn't clear — try again"; }
     };
+
+    // ================= YOUR MODEL (taste module) — keep feeding the nucleus post-fitting =================
+    (function tasteModule(){
+      const panel = document.getElementById("tasteMod");
+      const $ = id => document.getElementById(id);
+      // self-contained nucleus (isolated from the fitting's so nothing can regress it)
+      const cv = $("modelNuc"), ctx = cv.getContext("2d");
+      const CAP = 2200, R = 128, CX = 150, CY = 150;
+      let parts = [], raf = null, seedH = 11;
+      function arcs(){ let h = seedH; return [0,1,2].map(i => ({ a:0.4+((h>>(i*3))%7)/10, ph:((h>>(i*2))%628)/100, w:1.5+((h>>i)%3), ry:0.35+((h>>(i*4))%5)/10 })); }
+      function add(n){ const A = arcs(); for (let i=0;i<n&&parts.length<CAP;i++){ const onArc=Math.random()<0.55, a=A[(Math.random()*3)|0], t=Math.random()*Math.PI*2; let tx,ty;
+        if(onArc){ tx=CX+Math.cos(t*a.w+a.ph)*R*a.a; ty=CY+Math.sin(t)*R*a.a*a.ry+Math.sin(t*a.w)*18; }
+        else { const rr=R*Math.sqrt(Math.random()), th=Math.random()*Math.PI*2; tx=CX+rr*Math.cos(th); ty=CY+rr*Math.sin(th); }
+        parts.push({ x:CX+(Math.random()-0.5)*30, y:CY+(Math.random()-0.5)*30, tx, ty, j:Math.random()*6.28 }); } }
+      function retarget(){ const A=arcs(); parts.forEach((p,i)=>{ if(i%2) return; const a=A[i%3], t=(i/parts.length)*Math.PI*2;
+        p.tx=CX+Math.cos(t*a.w+a.ph)*R*a.a; p.ty=CY+Math.sin(t)*R*a.a*a.ry+Math.sin(t*a.w)*18; }); }
+      function draw(){ ctx.fillStyle="rgba(16,16,16,0.28)"; ctx.fillRect(0,0,300,300); const now=Date.now()/900;
+        for(const p of parts){ p.j+=0.013; p.x+=(p.tx-p.x)*0.03+Math.sin(now+p.j)*0.35; p.y+=(p.ty-p.y)*0.03+Math.cos(now*0.8+p.j)*0.35;
+          const al=0.25+0.55*Math.abs(Math.sin(p.j)); ctx.fillStyle="rgba(222,246,90,"+al.toFixed(2)+")"; ctx.fillRect(p.x,p.y,1.4,1.4); }
+        raf=requestAnimationFrame(draw); }
+
+      const LOVED = new Set();       // lowercased working set
+      let existingLoved = [];        // original payload entries (preserve casing)
+      let lovedExtra = [];           // loved names NOT in the survey list — still shown/removable
+      let archCount = 0;
+      function stats(){ $("modelArch").textContent = archCount; $("modelHouseCount").textContent = LOVED.size; }
+
+      function renderHouses(q){
+        // union: every loved brand is visible even if it was auto-promoted from taps (outside the 293)
+        const all = [...lovedExtra, ...(window.BRANDS_ALL || [])];
+        const list = q ? all.filter(b => b.includes(q)) : all;
+        // loved-first when idle, so the model reads back what it already knows
+        const ordered = q ? list : [...list].sort((a,b)=>(LOVED.has(b)?1:0)-(LOVED.has(a)?1:0));
+        $("modelHouses").innerHTML = ordered.slice(0,120).map(b =>
+          '<button class="fit-chip'+(LOVED.has(b)?' on':'')+'" data-h="'+esc(b)+'">'+esc(b)+'</button>').join("") +
+          (ordered.length>120 ? '<span class="fit-mono" style="padding:8px;">+ '+(ordered.length-120)+' more — keep typing</span>' : "");
+        $("modelHouses").querySelectorAll(".fit-chip").forEach(ch => ch.addEventListener("click", () => {
+          const b = ch.dataset.h;
+          if (LOVED.has(b)){ LOVED.delete(b); ch.classList.remove("on"); }
+          else { LOVED.add(b); ch.classList.add("on"); add(20); retarget(); }
+          stats();
+        }, LSN));
+      }
+
+      async function open(){
+        morePop.classList.remove("open");
+        LOVED.clear(); parts = []; archCount = 0; lovedExtra = []; $("modelSaved").textContent = "";
+        // seed from what the model already knows -> opens formed, never empty
+        const sigCount = Object.keys(SIG).length;
+        try {
+          const { data: t } = await sb.from("taste").select("payload").eq("user_id", userId).single();
+          const p = (t && t.payload) || {};
+          existingLoved = (p.brands && p.brands.loved) || [];
+          existingLoved.forEach(b => LOVED.add((b||"").toLowerCase()));
+          const survey = new Set(window.BRANDS_ALL || []);
+          lovedExtra = [...new Set(existingLoved.map(b => (b||"").toLowerCase()))].filter(b => b && !survey.has(b));
+          archCount = ((p.uploads && p.uploads.digested) || []).length;
+          seedH = 11; existingLoved.forEach(b => { for (const ch of (b||"")) seedH = (seedH*31 + ch.charCodeAt(0)) % 9973; });
+        } catch(e){ existingLoved = []; }
+        $("modelSig").textContent = sigCount;
+        add(Math.min(CAP, 500 + sigCount*3 + archCount*25));
+        stats(); renderHouses("");
+        panel.classList.add("on");
+        if (!raf) draw();
+      }
+      $("openModel").addEventListener("click", open, LSN);
+      $("modelSearch").addEventListener("input", function(){ renderHouses(this.value.toLowerCase().trim()); }, LSN);
+
+      // archive uploads (same private wardrobe path + compression as the fitting)
+      let mBucket = null;
+      async function compress(file){
+        const bmp = await createImageBitmap(file);
+        const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+        const c = document.createElement("canvas"); c.width = Math.round(bmp.width*s); c.height = Math.round(bmp.height*s);
+        c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+        return new Promise(r => c.toBlob(r, "image/jpeg", 0.82));
+      }
+      panel.querySelectorAll(".arch-tile").forEach(tile => tile.addEventListener("click", () => {
+        mBucket = tile.dataset.mbucket; $("modelArchInput").click();
+      }, LSN));
+      $("modelArchInput").addEventListener("change", async function(){
+        const files = [...this.files]; this.value = ""; if (!files.length || !mBucket) return;
+        const tile = panel.querySelector('.arch-tile[data-mbucket="'+mBucket+'"]'), cEl = tile.querySelector("[data-mcount]");
+        cEl.textContent = "LODGING…"; let n = 0;
+        for (const f of files){
+          try {
+            const blob = await compress(f);
+            const path = userId + "/" + mBucket + "/" + Date.now() + "-" + ((Math.random()*1e6)|0) + ".jpg";
+            const { error } = await sb.storage.from("wardrobe").upload(path, blob, { contentType: "image/jpeg" });
+            if (error) throw error;
+            n++; archCount++; add(30); retarget();
+          } catch(e){ console.error(e); }
+        }
+        tile.classList.toggle("filled", n > 0);
+        cEl.textContent = n ? n + " ADDED — FUEL FOR YOUR NEXT SCAN" : "tap to add";
+        stats();
+      }, LSN);
+
+      function close(){ panel.classList.remove("on"); if (raf){ cancelAnimationFrame(raf); raf = null; } }
+      $("modelClose").addEventListener("click", close, LSN);
+      $("modelSave").addEventListener("click", async () => {
+        // preserve original casing for brands already loved; add lowercase for new picks; drop unchecked
+        const kept = existingLoved.filter(b => LOVED.has((b||"").toLowerCase()));
+        const keptLower = new Set(kept.map(b => (b||"").toLowerCase()));
+        const added = [...LOVED].filter(b => !keptLower.has(b));
+        const merged = [...kept, ...added];
+        $("modelSave").disabled = true; $("modelSaved").textContent = "SAVING…";
+        try {
+          const { data: t } = await sb.from("taste").select("payload").eq("user_id", userId).single();
+          const p = (t && t.payload) || {};
+          (p.brands = p.brands || {}).loved = merged;
+          await sb.from("taste").update({ payload: p }).eq("user_id", userId);
+          $("modelSaved").textContent = "SAVED — SHAPES YOUR NEXT SCAN";
+          setTimeout(close, 900);
+        } catch(e){ console.error(e); $("modelSaved").textContent = "couldn't save — try again"; }
+        $("modelSave").disabled = false;
+      }, LSN);
+    })();
 
     // ---- scan sheet + cancel ----
     let SCAN_IV = null, SCAN_TICK = null;
