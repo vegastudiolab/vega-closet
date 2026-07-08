@@ -58,7 +58,7 @@ def extract_attrs(anthropic_key, image_url, title="", image_b64=None, media_type
          "tools": [ATTR_TOOL], "tool_choice": {"type": "tool", "name": "record_attributes"},
          "messages": [{"role": "user", "content": [
              {"type": "image", "source": source},
-             {"type": "text", "text": "Look at this menswear item and record its objective visual attributes. "
+             {"type": "text", "text": "Look at this fashion item (menswear or womenswear) and record its objective visual attributes. "
                                       "Judge only what you can see — no taste opinions. Title for context: " + (title or "")[:120]}]}]},
         {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01"})
     if st != 200 or not isinstance(r, dict): return None
@@ -83,7 +83,7 @@ def make_brief_addendum(anthropic_key, uploads_by_bucket):
     st, r = _http("POST", "https://api.anthropic.com/v1/messages",
         {"model": "claude-sonnet-5", "max_tokens": 700,
          "messages": [{"role": "user", "content":
-            "You maintain a menswear taste rubric used to score secondhand listings 0-1 by vision. "
+            "You maintain a personal fashion taste rubric used to score secondhand listings 0-1 by vision. "
             "From this user's ARCHIVE (attribute summaries of their own photos, grouped by how they relate "
             "to the pieces), write a compact addendum: LOVED SIGNATURE (silhouettes/materials/palette/moods "
             "with weights implied by bucket semantics), and ASPIRATION vs BUY-NOW distinction. Plain text, "

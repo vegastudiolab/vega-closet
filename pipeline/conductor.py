@@ -63,18 +63,33 @@ def sb(method, path, body=None, extra=None):
 def norm(s): return (s or "").strip().lower()
 
 # ---------- filters (mirror ingest.py + the scraper size rules) ----------
-CATS = ("outerwear", "bottoms", "tops", "footwear")
+# dresses/skirts join for womenswear; they simply never appear on men's items.
+CATS = ("outerwear", "bottoms", "tops", "footwear", "dresses", "skirts")
+GENDER = os.environ.get("GENDER", "").strip().lower()   # scan scope: men | women | '' (both, daily)
 # accessories are OPT-IN: only an explicit accessories scan pulls them (97% are "one size" —
 # letting them into every scan would flood the feed). Everything routes through ALLOWED_CATS.
 ALLOWED_CATS = ("accessories",) if os.environ.get("CATEGORY", "").strip().lower() == "accessories" else CATS
 def infer_cat(title):
     t = norm(title)
+    if re.search(r"\bdress\b|\bgown\b|\bmaxi\b|\bmidi\b|\bbodycon\b", t) and not re.search(r"dress shirt|dress pant|dress shoe", t): return "dresses"
+    if re.search(r"\bskirt\b", t): return "skirts"
     if re.search(r"jacket|bomber|coat|parka|puffer|trench|vest|cardigan|anorak|blazer|overshirt|shearling|hoodie.*zip", t): return "outerwear"
-    if re.search(r"pant|jean|trouser|cargo|short|jogger|sweatpant|denim", t): return "bottoms"
-    if re.search(r"tee|t-shirt|shirt|hoodie|sweater|knit|polo|tank|longsleeve|long sleeve|turtleneck|sweatshirt|jumper", t): return "tops"
-    if re.search(r"boot|sneaker|shoe|loafer|sandal|mule|derby|trainer", t): return "footwear"
+    if re.search(r"pant|jean|trouser|cargo|short|jogger|sweatpant|denim|legging", t): return "bottoms"
+    if re.search(r"tee|t-shirt|shirt|hoodie|sweater|knit|polo|tank|longsleeve|long sleeve|turtleneck|sweatshirt|jumper|blouse|top\b|cami", t): return "tops"
+    if re.search(r"boot|sneaker|shoe|loafer|sandal|mule|derby|trainer|heel|pump|flat\b", t): return "footwear"
     if re.search(r"hat|cap|bag|wallet|belt|sunglass|jewel|scarf|glove|sock|phone case|keychain", t): return None
     return "tops"
+
+# gender detection — TAG each item (we used to DROP women's; now we keep + label so women can shop).
+_WOMENS_RX = re.compile(r"\bwomen'?s?\b|\bladies\b|\bfemme\b|\bgirl'?s?\b|\bwmns\b", re.I)
+_MENS_RX   = re.compile(r"\bmen'?s?\b|\bhomme\b|\bmens\b|\bboy'?s?\b", re.I)
+def infer_gender(title, cat=None, hint=None):
+    if hint in ("men", "women", "unisex"): return hint
+    t = title or ""
+    if _WOMENS_RX.search(t): return "women"
+    if _MENS_RX.search(t): return "men"
+    if cat in ("dresses", "skirts"): return "women"     # menswear doesn't stock these
+    return hint or "men"                                 # source department is the real signal (passed as hint)
 
 _BLZ  = re.compile(r"blazer|sport ?coat|suit jacket|\bsuit\b|tuxedo|dinner jacket|two[- ]?button|double[- ]?breasted|single[- ]?breasted|peak lapel|notch lapel|pinstripe", re.I)
 _KEEP = re.compile(r"padded|deconstruct|distress|rivet|asymmetric|cargo|tech|nylon|leather|denim|fleece|hood|work|bomber|track|puffer|anorak|coach|moto|biker|quilt", re.I)
@@ -84,36 +99,50 @@ def is_blazer(title):
 # Sizes are DATA (taste.payload.sizes per user), not code. The conductor scrapes the UNION of all
 # users' sizes — the shared catalog must fit anyone; the feed builder then hard-filters per user.
 # UNION_SIZES is populated in main() from every taste row; these defaults keep dev/tests working.
+# gender-keyed so the shared catalog fits both; per-user hard filter still runs in build_feed_cloud.
+# 'men' defaults = Charles; 'women' defaults are broad operator defaults until women users set theirs.
 UNION_SIZES = {
-    "tops":  {"l","xl","xxl","52","54","56"},
-    "waist": {"36","37","38"},
-    "shoes": {"14","14.5","15","47","48"},
-    "exceptions": [{"brand":"balenciaga","category":"footwear","add":{"13","13.5","46"}}],
+    "men": {
+        "tops":  {"l","xl","xxl","52","54","56"},
+        "waist": {"36","37","38"},
+        "shoes": {"14","14.5","15","47","48"},
+        "dresses": set(), "skirts": set(),
+        "exceptions": [{"brand":"balenciaga","category":"footwear","add":{"13","13.5","46"}}],
+    },
+    "women": {
+        "tops":  {"xs","s","m","l","36","38","40","42","0","2","4","6","8"},
+        "waist": {"24","25","26","27","28","29","30","0","2","4","6","8","xs","s","m"},
+        "shoes": {"5","6","7","8","9","10","11","35","36","37","38","39","40","41"},
+        "dresses": {"xs","s","m","l","0","2","4","6","8","10","36","38","40","42"},
+        "skirts":  {"xs","s","m","l","24","25","26","27","28","0","2","4","6","8"},
+        "exceptions": [],
+    },
 }
 
 def _size_re(tokens):
     return re.compile(r"\b(" + "|".join(re.escape(t) for t in sorted(tokens, key=len, reverse=True)) + r")\b") if tokens else None
 
-def in_size(cat, s, brand=""):
+def in_size(cat, s, brand="", gender="men"):
+    U = UNION_SIZES.get(gender or "men", UNION_SIZES["men"])
     s = norm(s)
     if cat == "accessories":
-        # one-size flows; waist-sized accessories (belts) follow the waist union (+ eu belt cm)
         if not s or "one size" in s or s in ("os", "o/s"): return True
-        belt = UNION_SIZES["waist"] | {"90", "95"}
-        rx = _size_re(belt)
+        rx = _size_re(U["waist"] | {"90", "95"})
         return bool(rx and rx.search(s))
     if not s: return False
     if cat == "footwear":
-        toks = set(UNION_SIZES["shoes"])
-        for ex in UNION_SIZES.get("exceptions", []):
+        toks = set(U["shoes"])
+        for ex in U.get("exceptions", []):
             if ex.get("category") == "footwear" and norm(ex.get("brand","")) in norm(brand):
                 toks |= set(ex.get("add") or [])
         rx = _size_re(toks)
         return bool(rx and rx.search(s))
+    if cat == "dresses": rx = _size_re(U["dresses"] or U["tops"]); return bool(rx and rx.search(s))
+    if cat == "skirts":  rx = _size_re(U["skirts"] or U["waist"]); return bool(rx and rx.search(s))
     if cat == "bottoms":
-        rx = _size_re(UNION_SIZES["waist"] | {t for t in UNION_SIZES["tops"] if not t.isdigit() or int(float(t)) > 44})
+        rx = _size_re(U["waist"] | {t for t in U["tops"] if not t.replace('.','').isdigit() or float(t) > 44})
         return bool(rx and rx.search(s))
-    rx = _size_re(UNION_SIZES["tops"])                                # tops / outerwear
+    rx = _size_re(U["tops"])                                          # tops / outerwear
     return bool(rx and rx.search(s))
 
 def load_union_sizes(taste_rows):
@@ -220,16 +249,17 @@ def apify_run(actor, inp, memory=1024, wait=280):
 # Grailed via ITS OWN Algolia search API — direct, server-side filtered by designer+size+condition, no proxy, effectively free.
 GRAILED_APP  = "MNRWEFSS2Q"
 GRAILED_KEY  = os.environ.get("GRAILED_KEY", "c89dbaddf15fe70e1941a109bf7c2a3d")   # public search key; self-heals on 403
-def grailed_size_facet():
-    # built from the live size union (tops alpha/numeric, waists, shoes + brand-exception tokens);
-    # in_size() refines per item, the feed builder refines per USER.
-    toks = set(UNION_SIZES["tops"]) | set(UNION_SIZES["waist"]) | set(UNION_SIZES["shoes"])
-    for ex in UNION_SIZES.get("exceptions", []):
+def grailed_size_facet(gender="men"):
+    # built from the live size union for this gender; in_size refines per item, builder per USER.
+    U = UNION_SIZES.get(gender or "men", UNION_SIZES["men"])
+    toks = set(U["tops"]) | set(U["waist"]) | set(U["shoes"]) | set(U.get("dresses") or set()) | set(U.get("skirts") or set())
+    for ex in U.get("exceptions", []):
         toks |= set(ex.get("add") or [])
     return ["size:" + t for t in sorted(toks)]
 
-def grailed_size_facet_acc():
-    return ["size:one size"] + ["size:" + t for t in sorted(UNION_SIZES["waist"])]      # accessories: 97% one-size; belts by waist
+def grailed_size_facet_acc(gender="men"):
+    U = UNION_SIZES.get(gender or "men", UNION_SIZES["men"])
+    return ["size:one size"] + ["size:" + t for t in sorted(U["waist"])]                 # accessories: 97% one-size; belts by waist
 
 def _grailed_refresh_key():
     global GRAILED_KEY
@@ -283,9 +313,10 @@ def grailed_canon_brands(raw_list):
     if missed: print(f"  grailed: no designer match for {missed} — dropped from this scan")
     return out
 
-def scrape_grailed(brands, loved):
-    sizes = grailed_size_facet_acc() if CATEGORY == "accessories" else grailed_size_facet()
-    facet = [["designers.name:" + b for b in brands], sizes, ["condition:is_new", "condition:is_gently_used"], ["department:menswear"]]
+def scrape_grailed(brands, loved, gender="men"):
+    dept = "womenswear" if gender == "women" else "menswear"
+    sizes = grailed_size_facet_acc(gender) if CATEGORY == "accessories" else grailed_size_facet(gender)
+    facet = [["designers.name:" + b for b in brands], sizes, ["condition:is_new", "condition:is_gently_used"], ["department:" + dept]]
     if CATEGORY: facet.append(["category:" + CATEGORY])           # grailed's category facet uses our exact five names
     out = []
     for page in range(3):                                         # newest ~300 across his brands in his sizes
@@ -301,10 +332,10 @@ def scrape_grailed(brands, loved):
             gcat = h.get("category")                              # trust grailed's own label; fall back to title inference
             out.append({"url":"https://www.grailed.com/listings/"+iid, "id":iid, "platform":"grailed",
                         "brand":dn, "title":title, "category":(gcat if gcat in ALLOWED_CATS else infer_cat(title)), "price":h.get("price"),
-                        "size":h.get("size",""), "condition":cond,
+                        "size":h.get("size",""), "condition":cond, "gender":gender,
                         "image":((h.get("cover_photo") or {}).get("url") or "").split("?")[0]})
         if len(hits) < 100: break
-    print(f"  grailed: {len(out)} listings across {len(brands)} brand(s), via Algolia (no Apify)")
+    print(f"  grailed {gender}: {len(out)} listings across {len(brands)} brand(s), via Algolia (no Apify)")
     return out
 
 # The RealReal via ITS OWN GraphQL API, through Firecrawl stealth (clears TRR's PerimeterX wall), Bright Data fallback.
@@ -318,6 +349,9 @@ TRR_QUERY = ("query P($first:Int,$after:String,$where:ProductFilters,$sortBy:Sor
 TRR_TAXCAT = {"men/clothing/outerwear":"outerwear", "men/clothing/sweaters-sweatshirts":"tops",
               "men/clothing/shirts":"tops", "men/clothing/pants":"bottoms", "men/clothing/jeans":"bottoms",
               "men/shoes":"footwear"}
+TRR_TAXCAT_W = {"women/clothing/coats-and-jackets":"outerwear", "women/clothing/sweaters":"tops",
+                "women/clothing/tops":"tops", "women/clothing/pants":"bottoms", "women/clothing/jeans":"bottoms",
+                "women/clothing/dresses":"dresses", "women/clothing/skirts":"skirts", "women/shoes":"footwear"}
 
 def _trr_json(raw):
     i = (raw or "").find('{"data"')
@@ -342,10 +376,10 @@ def trr_graphql(variables):
         payload = _trr_json(r2 if isinstance(r2, str) else json.dumps(r2))
     return ((payload or {}).get("data") or {}).get("products") if payload else None
 
-def _trr_taxon(taxon, cat, slugs, loved_raw):
+def _trr_taxon(taxon, cat, slugs, loved_raw, gender):
     out = []
     buckets = {"taxonsPermalink": [taxon], "designerSlug": slugs}
-    if cat in ("outerwear", "tops"): buckets["clothingSize"] = ["27", "28", "29"]   # L/XL/XXL server-side; bottoms/shoes filtered client-side by in_size()
+    if gender == "men" and cat in ("outerwear", "tops"): buckets["clothingSize"] = ["27", "28", "29"]   # men L/XL/XXL server-side; women filtered client-side
     after = None
     for _page in range(2):                                     # newest 2 pages/category = the fresh delta
         v = {"first": 120, "currency": "USD", "sortBy": "NEWEST", "where": {"buckets": buckets}}
@@ -356,10 +390,11 @@ def _trr_taxon(taxon, cat, slugs, loved_raw):
         for e in pr.get("edges", []):
             n = e.get("node") or {}
             brand = (n.get("brandUnion") or {}).get("name") or ""
-            # TRR leaks womenswear into men's taxons — drop anything whose gender attribute isn't men's
-            gender = " ".join(str(x) for a in (n.get("attributes") or []) if str(a.get("type","")).upper()=="GENDER" for x in (a.get("values") or [])).lower()
-            if gender and ("women" in gender or gender == "female"): continue
-            sizeparts = [str(x) for a in (n.get("attributes") or []) if a.get("type") in ("CLOTHING_SIZE","SHOE_SIZE","MENS_WAIST") for x in (a.get("values") or [])]
+            # TAG gender: taxon is the base, but an explicit gender attribute overrides (catches cross-leaks
+            # so a men user never sees a women's piece and vice-versa).
+            gattr = " ".join(str(x) for a in (n.get("attributes") or []) if str(a.get("type","")).upper()=="GENDER" for x in (a.get("values") or [])).lower()
+            g = "women" if ("women" in gattr or gattr == "female") else ("men" if ("men" in gattr or gattr == "male") else gender)
+            sizeparts = [str(x) for a in (n.get("attributes") or []) if a.get("type") in ("CLOTHING_SIZE","SHOE_SIZE","MENS_WAIST","WOMENS_SIZE","DRESS_SIZE") for x in (a.get("values") or [])]
             price = None
             try: price = (((n.get("price") or {}).get("final") or {}).get("usdCents") or 0) / 100 or None
             except Exception: pass
@@ -367,7 +402,7 @@ def _trr_taxon(taxon, cat, slugs, loved_raw):
             out.append({"url": (n.get("url") or "").split("?")[0], "id": str(n.get("id") or n.get("sku") or ""),
                         "platform": "therealreal", "brand": brand_matches(brand, loved_raw) or brand,
                         "title": n.get("name", ""), "category": cat, "price": price, "size": " ".join(sizeparts),
-                        "condition": n.get("condition") or "gently used",
+                        "condition": n.get("condition") or "gently used", "gender": g,
                         "image": ((imgs[0].get("url", "") if imgs and isinstance(imgs[0], dict) else "") or "").split("?")[0]})
         pi = pr.get("pageInfo") or {}
         after = pi.get("endCursor")
@@ -375,14 +410,15 @@ def _trr_taxon(taxon, cat, slugs, loved_raw):
     print(f"  trr {taxon}: {len(out)} items")
     return out
 
-def scrape_trr(loved, loved_raw):
+def scrape_trr(loved, loved_raw, gender="men"):
     slugs = [s for s in (re.sub(r"[^a-z0-9]+", "-", norm(b)).strip("-") for b in loved_raw) if s]  # loved brands -> TRR designer slugs
-    taxcat = {t: c for t, c in TRR_TAXCAT.items() if not CATEGORY or c == CATEGORY}   # category scan -> only matching taxons
-    # the 6 taxons are independent — run them concurrently (each was 30-90s through the stealth proxy)
+    src = TRR_TAXCAT_W if gender == "women" else TRR_TAXCAT
+    taxcat = {t: c for t, c in src.items() if not CATEGORY or c == CATEGORY}   # category scan -> only matching taxons
+    # the taxons are independent — run them concurrently (each was 30-90s through the stealth proxy)
     from concurrent.futures import ThreadPoolExecutor
     out = []
     with ThreadPoolExecutor(max_workers=max(1, len(taxcat))) as ex:
-        for part in ex.map(lambda tc: _trr_taxon(tc[0], tc[1], slugs, loved_raw), taxcat.items()):
+        for part in ex.map(lambda tc: _trr_taxon(tc[0], tc[1], slugs, loved_raw, gender), taxcat.items()):
             out += part
     return out
 
@@ -394,17 +430,18 @@ def firecrawl_scrape(url, schema, proxy="auto", wait=9000, return_meta=False):
     data = r.get("data") or {}
     return data if return_meta else data.get("json")   # return_meta -> full data (json + metadata og:image)
 
-def scrape_ssense(brands, loved_raw, existing=None, per_brand=6):
+def scrape_ssense(brands, loved_raw, existing=None, per_brand=6, gender="men"):
     # SSENSE needs the stealth proxy + a proper JSON Schema, or the extraction comes back empty.
     LIST = {"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{
         "name":{"type":"string"},"price":{"type":"number"},"url":{"type":"string"},"image":{"type":"string"}}}}}}
     SIZE = {"type":"object","properties":{"name":{"type":"string"},
         "sizesAvailable":{"type":"array","items":{"type":"string"}},"image":{"type":"string"}}}
     existing = existing or set()
+    seg = "women" if gender == "women" else "men"
     out = []
     for b in brands[:8]:                                          # light pass to control credits
         slug = re.sub(r"[^a-z0-9]+","-",norm(b)).strip("-")
-        data = firecrawl_scrape(f"https://www.ssense.com/en-us/men/designers/{slug}", LIST, proxy="stealth", wait=12000)
+        data = firecrawl_scrape(f"https://www.ssense.com/en-us/{seg}/designers/{slug}", LIST, proxy="stealth", wait=12000)
         prods = (data or {}).get("products") or []
         fresh = 0
         for p in prods:
@@ -418,7 +455,7 @@ def scrape_ssense(brands, loved_raw, existing=None, per_brand=6):
             fresh += 1
             szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000, return_meta=True) or {}   # json (sizes) + metadata (og:image)
             sizes = " ".join((szdata.get("json") or {}).get("sizesAvailable") or [])
-            if not in_size(cat, sizes, b): continue
+            if not in_size(cat, sizes, b, gender): continue
             meta = szdata.get("metadata") or {}
             og = meta.get("ogImage") or meta.get("og:image") or ""
             if isinstance(og, list): og = og[0] if og else ""
@@ -430,13 +467,13 @@ def scrape_ssense(brands, loved_raw, existing=None, per_brand=6):
             m = re.search(r"(\d+)$", purl)
             out.append({"url":purl,"id":(m.group(1) if m else purl),"platform":"ssense","brand":b,
                         "title":title,"category":cat,"price":p.get("price"),"size":sizes,
-                        "condition":"new","image":img})
+                        "condition":"new","gender":gender,"image":img})
     return out
 
 # ---------- rank a new piece by his EYE (Claude vision vs the stored taste rubric) ----------
 def vision_score(image_url, brief):
     if not (ANTHROPIC_KEY and brief and image_url): return None
-    prompt = ("You are ranking one menswear piece for a single collector. His visual taste rubric:\n"
+    prompt = ("You are ranking one fashion piece for a single collector. Their visual taste rubric:\n"
               + (brief.get("brief","")) + "\n\nLOVED signals: " + "; ".join(brief.get("lovedSignals", []))
               + "\nPASSED signals: " + "; ".join(brief.get("passedSignals", []))
               + "\n\nLook at the photo and score how strongly THIS piece matches his taste. "
@@ -472,10 +509,7 @@ def fetch_all(table, select):
         start += step
     return rows
 
-# womenswear leaks through TRR's men's taxons (silk mini dresses tagged as men's tops).
-# "dress" alone is womenswear; "dress shirt/pants/shoes" is menswear.
-_WOMENS = re.compile(r"\bdress(es)?\b(?!\s*(shirt|pant|shoe|boot|sock))|\bwomen'?s?\b|\bladies\b|\bgown\b|\bblouse\b|\bbikini\b", re.I)
-# sources also mislabel accessories as clothing ("Leather Belt" under tops) — retag by title
+# sources mislabel accessories as clothing ("Leather Belt" under tops) — retag by title
 _ACC = re.compile(r"\b(belt|wallet|card ?holder|scarf|beanie|keychain|sunglasses|bracelet|necklace|ring|earring)s?\b", re.I)
 _ACC_NOT = re.compile(r"belted|belt(ed)?[- ]bag|ring[- ]?(collar|zip)", re.I)
 
@@ -486,13 +520,14 @@ def filter_new(found, known, loved):
         if not url or not it.get("brand") or not str(it.get("image","")).startswith("http"): continue  # reject data:/placeholder images
         if url in known or url in newurls: continue                # only genuinely new
         title = it.get("title") or ""
-        if _WOMENS.search(title): continue                          # womenswear leak (TRR)
         if _ACC.search(title) and not _ACC_NOT.search(title):
             it["category"] = "accessories"                          # belts etc. tagged as tops -> retag, then gate below
         cat = it["category"]
         if cat not in ALLOWED_CATS: continue
-        if not in_size(cat, it.get("size"), it.get("brand")): continue
-        if is_blazer(it.get("title")): continue
+        # gender: trust the scraper's tag; firm it up from the title (catches source cross-leaks)
+        it["gender"] = infer_gender(title, cat, it.get("gender"))
+        if not in_size(cat, it.get("size"), it.get("brand"), it["gender"]): continue
+        if it["gender"] == "men" and is_blazer(it.get("title")): continue   # blazer rule is a menswear preference
         newurls.add(url)
         tags = tags_from(it["title"])
         rows.append({**it, "reasons": tags, "base_score": base_score(it["brand"], tags, loved),
@@ -547,10 +582,18 @@ def main():
         skipped = sorted(set(norm(b) for b in paid_base) - set(norm(b) for b in paid_raw))
         print(f"paid sources skip {len(skipped)} deep-gated brand(s) today (weekly slot): {skipped}")
 
+    # scan scope: an explicit GENDER (a woman's manual scan) hits just her side; the daily run
+    # (GENDER unset) scrapes BOTH so the shared catalog serves everyone. Union of users' genders
+    # keeps us from scraping women's if no woman exists yet.
+    user_genders = {norm((t.get("payload") or {}).get("gender")) or "men" for t in taste_rows} or {"men"}
+    genders = [GENDER] if GENDER in ("men", "women") else sorted(g for g in ("men", "women") if g in user_genders)
+    print(f"scanning genders: {genders}")
+
     found = []
-    if "grailed" in SOURCES:              found += scrape_grailed(todays, loved)      # Grailed Algolia (no Apify)
-    if "therealreal" in SOURCES and FIRE: found += scrape_trr(loved, paid_raw)        # TRR GraphQL via Firecrawl (no Apify)
-    if "ssense" in SOURCES and FIRE:      found += scrape_ssense(paid_today, loved_raw, existing)
+    for g in genders:
+        if "grailed" in SOURCES:              found += scrape_grailed(todays, loved, g)        # Grailed Algolia (no Apify)
+        if "therealreal" in SOURCES and FIRE: found += scrape_trr(loved, paid_raw, g)          # TRR GraphQL via Firecrawl
+        if "ssense" in SOURCES and FIRE:      found += scrape_ssense(paid_today, loved_raw, existing, gender=g)
     print(f"scraped {len(found)} raw items")
 
     # dismissed items are hidden, not banned: if a scan finds one again it returns to the feed

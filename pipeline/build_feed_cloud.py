@@ -77,22 +77,27 @@ def is_style(t):
 
 _ALL_SECTIONS = {
     "outerwear":  ("outerwear","leather, denim, shearling and tech, ranked"),
-    "bottoms":    ("bottoms","36-38 only, leather and wide-leg lead"),
+    "bottoms":    ("bottoms","in-size only, leather and wide-leg lead"),
     "tops":       ("tops + knits","tees, hoodies, knits, shirts"),
-    "footwear":   ("footwear","in-size only, us 14-15 / eu 47-48 (+ balenciaga 46)"),
-    "accessories":("accessories","belts in your waist, plus one-size pieces — from accessories scans"),
+    "dresses":    ("dresses","in-size only, ranked to your eye"),
+    "skirts":     ("skirts","in-size only, ranked to your eye"),
+    "footwear":   ("footwear","in-size only, ranked to your eye"),
+    "accessories":("accessories","belts in your size, plus one-size pieces — from accessories scans"),
 }
 # seasonal section order: summer/spring lead with tops, light layers still welcome;
 # fall/winter put outerwear back on top
 _SEASON = {12:"winter",1:"winter",2:"winter",3:"spring",4:"spring",5:"spring",
            6:"summer",7:"summer",8:"summer",9:"fall",10:"fall",11:"fall"}[date.today().month]
 _ORDER = {
-    "summer": ["tops","bottoms","footwear","outerwear","accessories"],
-    "spring": ["tops","outerwear","bottoms","footwear","accessories"],
-    "fall":   ["outerwear","tops","bottoms","footwear","accessories"],
-    "winter": ["outerwear","tops","bottoms","footwear","accessories"],
+    "summer": ["tops","bottoms","dresses","skirts","footwear","outerwear","accessories"],
+    "spring": ["tops","dresses","outerwear","bottoms","skirts","footwear","accessories"],
+    "fall":   ["outerwear","tops","bottoms","dresses","skirts","footwear","accessories"],
+    "winter": ["outerwear","tops","bottoms","dresses","skirts","footwear","accessories"],
 }[_SEASON]
-SECTIONS = [(k,) + _ALL_SECTIONS[k] for k in _ORDER]
+def sections_for(gender):
+    # dresses/skirts only for women; men keep the original set
+    keys = _ORDER if gender == "women" else [k for k in _ORDER if k not in ("dresses","skirts")]
+    return [(k,) + _ALL_SECTIONS[k] for k in keys]
 _HEAVY = re.compile(r"shearling|puffer|parka|\bdown\b|\bfur\b|overcoat|heavy ?wool|fleece|quilted", re.I)
 _LIGHT = re.compile(r"\blight|windbreaker|coach|track|nylon|denim jacket|shirt jacket|overshirt|\bvest\b|mesh|linen|short ?sleeve|\btank\b|\btee\b", re.I)
 
@@ -239,12 +244,14 @@ def build_for_user(uid, taste, catalog):
     # THE hard promise: nothing that doesn't fit THIS user ever reaches their feed. Sizes are data
     # (taste.payload.sizes) — the shared catalog holds the union of everyone's sizes; this filter
     # cuts it down to one body. Users without sizes yet (mid-onboarding) see everything.
+    ugender = norm(taste.get("gender")) or "men"          # a men user never sees women's pieces, and vice-versa
     usz = (taste.get("sizes") or {})
     def _rx(tokens):
         toks = sorted({norm(t) for t in tokens if t}, key=len, reverse=True)
         return re.compile(r"\b(" + "|".join(re.escape(t) for t in toks) + r")\b") if toks else None
     rx_tops, rx_waist = _rx(usz.get("tops") or []), _rx(usz.get("waist") or [])
     rx_shoes = _rx(usz.get("shoes") or [])
+    rx_dress = _rx(usz.get("dresses") or usz.get("tops") or [])   # women: dress sizes; falls back to tops
     exc = [(norm(e.get("brand","")), e.get("category",""), _rx(e.get("add") or []))
            for e in (usz.get("exceptions") or [])]
     def fits_user(it):
@@ -258,7 +265,8 @@ def build_for_user(uid, taste, catalog):
         for b, c, rx in exc:                               # brand quirks (balenciaga 46 etc.)
             if rx and c == cat and b in norm(it.get("brand") or "") and rx.search(s): return True
         if cat == "footwear": return bool(rx_shoes and rx_shoes.search(s))
-        if cat == "bottoms":  return bool(rx_waist and rx_waist.search(s))
+        if cat in ("bottoms", "skirts"): return bool(rx_waist and rx_waist.search(s))
+        if cat == "dresses":  return bool((rx_dress and rx_dress.search(s)) or (rx_tops and rx_tops.search(s)))
         return bool(rx_tops and rx_tops.search(s))         # tops / outerwear
 
     # urls Charles cleared without judging (bad scan batches etc.) — hidden from the feed,
@@ -274,6 +282,9 @@ def build_for_user(uid, taste, catalog):
         it["isLiked"] = url in liked_ids or it["isCarted"]      # carted counts as acted/loved
         if not it["isArchived"] and not it["isLiked"] and url in dismissed:
             continue
+        ig = norm(it.get("gender")) or "men"
+        if not it["isArchived"] and not it["isLiked"] and ig != "unisex" and ig != ugender:
+            continue                                       # wrong gender for this user — never surface it
         if not it["isArchived"] and not it["isLiked"] and not fits_user(it):
             n_size_retired += 1
             continue
@@ -348,7 +359,7 @@ def build_for_user(uid, taste, catalog):
                 "image":it.get("image"),"url":it.get("url"),"reasons":it.get("reasons") or [],"score":it["score"],
                 "sz":it.get("sz"),"isArchived":it["isArchived"],"isLiked":it["isLiked"],"isCarted":it.get("isCarted",False),"isNew":it["isNew"]}
     secout = []
-    for key, title, sub in SECTIONS:
+    for key, title, sub in sections_for(ugender):
         cat = [it for it in items if it.get("category") == key]
         act = sorted([i for i in cat if not i["isArchived"]], key=lambda x: (x.get("firstSeen",""), x.get("score",0)), reverse=True)
         arc = sorted([i for i in cat if i["isArchived"]], key=lambda x: -x.get("score",0))
@@ -393,7 +404,7 @@ def build_for_user(uid, taste, catalog):
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():
-    catalog = fetch_all("catalog", "url,id,platform,brand,title,category,price,size,condition,image,reasons,base_score,sz,first_seen,last_seen,attrs")
+    catalog = fetch_all("catalog", "url,id,platform,brand,title,category,price,size,condition,image,reasons,base_score,sz,first_seen,last_seen,attrs,gender")
     users = fetch_all("taste", "user_id,payload")
     print(f"catalog {len(catalog)} items | {len(users)} user(s)")
     for u in users:
