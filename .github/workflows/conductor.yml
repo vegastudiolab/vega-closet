@@ -31,6 +31,9 @@ on:
       no_vision:
         description: 'raw scan: skip the taste rating, items come back tagged unrated'
         default: ''
+      gender:
+        description: 'scan scope: men | women (blank = all genders users need)'
+        default: ''
 
 # never let two runs stomp each other
 concurrency:
@@ -63,6 +66,7 @@ jobs:
           QUERY:          ${{ github.event.inputs.query || '' }}
           CATEGORY:       ${{ github.event.inputs.category || '' }}
           NO_VISION:      ${{ github.event.inputs.no_vision || '' }}
+          GENDER:         ${{ github.event.inputs.gender || '' }}
         run: python pipeline/conductor.py
 
       - name: rebuild every user's feed
