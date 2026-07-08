@@ -193,8 +193,37 @@ def build_for_user(uid, taste, catalog):
         except Exception as e:
             print("  archive digest failed (continuing):", e)
 
-    # ---- stage 1: fit THIS user's taste weights over the shared item attributes ----
+    # ---- brief from taps: users who never upload still deserve stage-2 vision quality.
+    # If no rubric exists (or their loves doubled since we last wrote one), synthesize it from
+    # the attributes of what they LOVED/CARTED — the taps are the closet they haven't photographed.
     cat_by_url = {c["url"]: c for c in catalog}
+    if ANTHROPIC_KEY:
+        try:
+            vb_cur = taste.get("visualBrief")
+            has_brief = bool((vb_cur.get("brief") if isinstance(vb_cur, dict) else vb_cur) or "")
+            loved_attrs = [cat_by_url[x["url"]]["attrs"] for x in sigs
+                           if x["action"] in ("liked", "carted") and cat_by_url.get(x["url"], {}).get("attrs")]
+            carted_attrs = [cat_by_url[x["url"]]["attrs"] for x in sigs
+                            if x["action"] == "carted" and cat_by_url.get(x["url"], {}).get("attrs")]
+            synth_at = (taste.get("meta") or {}).get("briefFromTapsN", 0)
+            if len(loved_attrs) >= 10 and (not has_brief or (synth_at and len(loved_attrs) >= 2 * synth_at)):
+                tap_brief = taste_model.make_brief_addendum(ANTHROPIC_KEY, {
+                    "grails": carted_attrs[:20],                       # carted = strongest tapped intent
+                    "receipts": [], "rotation": [],
+                    "looks": loved_attrs[-40:],                        # newest loves = current direction
+                })
+                if tap_brief:
+                    if isinstance(vb_cur, dict) and has_brief:
+                        vb_cur["brief"] = (vb_cur.get("brief","").split("\n\n[ FROM YOUR TAPS ]")[0]
+                                           + "\n\n[ FROM YOUR TAPS ]\n" + tap_brief).strip()
+                    else:
+                        taste["visualBrief"] = {"brief": "[ FROM YOUR TAPS ]\n" + tap_brief, "source": "taps"}
+                    (taste.setdefault("meta", {}))["briefFromTapsN"] = len(loved_attrs)
+                    print(f"  brief synthesized from {len(loved_attrs)} loved taps — stage-2 unlocked")
+        except Exception as e:
+            print("  brief-from-taps failed (continuing):", e)
+
+    # ---- stage 1: fit THIS user's taste weights over the shared item attributes ----
     labeled = []
     for x in sigs:
         c0 = cat_by_url.get(x["url"])

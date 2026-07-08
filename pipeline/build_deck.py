@@ -48,9 +48,12 @@ def legible(c):
     if re.search(r"\b(lot of|bundle|x2|2 pack|read desc|damaged|flaw)\b", t): return False
     return True
 
-def main():
-    catalog = [c for c in fetch_all("catalog", "url,brand,title,price,category,image,attrs", "&attrs=not.is.null") if legible(c)]
-    print(f"eligible after legibility: {len(catalog)}")
+def build_gender(gender):
+    catalog = [c for c in fetch_all("catalog", "url,brand,title,price,category,image,attrs,gender",
+               f"&attrs=not.is.null&gender=eq.{gender}") if legible(c)]
+    print(f"[{gender}] eligible after legibility: {len(catalog)}")
+    if len(catalog) < 60:
+        print(f"[{gender}] not enough inventory for a deck yet — skipping"); return
 
     # feature vocabulary each item covers (the same space the model fits on)
     def keys(c):
@@ -69,15 +72,21 @@ def main():
     # greedy max-coverage: pick the item that fills the most still-open quota; cap 2 per brand,
     # keep category mix from collapsing into tops (the catalog is tops-heavy)
     pool, brand_ct, cat_ct = [], {}, {}
-    cat_cap = {"tops": int(POOL_SIZE * 0.32), "outerwear": int(POOL_SIZE * 0.28),
-               "bottoms": int(POOL_SIZE * 0.22), "footwear": int(POOL_SIZE * 0.12),
-               "accessories": int(POOL_SIZE * 0.06)}
+    brand_cap = 2 if gender == "men" else 4          # young women's catalog: fewer brands to spread across
+    cat_cap = ({"tops": int(POOL_SIZE * 0.26), "outerwear": int(POOL_SIZE * 0.20),
+                "bottoms": int(POOL_SIZE * 0.16), "dresses": int(POOL_SIZE * 0.16),
+                "skirts": int(POOL_SIZE * 0.10), "footwear": int(POOL_SIZE * 0.08),
+                "accessories": int(POOL_SIZE * 0.04)}
+               if gender == "women" else
+               {"tops": int(POOL_SIZE * 0.32), "outerwear": int(POOL_SIZE * 0.28),
+                "bottoms": int(POOL_SIZE * 0.22), "footwear": int(POOL_SIZE * 0.12),
+                "accessories": int(POOL_SIZE * 0.06)})
     remaining = list(catalog)
     while len(pool) < POOL_SIZE and remaining:
         best, best_gain = None, -1
         for c in remaining:
             b = (c.get("brand") or "").lower(); cat = c.get("category")
-            if brand_ct.get(b, 0) >= 2 or cat_ct.get(cat, 0) >= cat_cap.get(cat, 0): continue
+            if brand_ct.get(b, 0) >= brand_cap or cat_ct.get(cat, 0) >= cat_cap.get(cat, 0): continue
             gain = sum(1 for k in feats[c["url"]] if need.get(k, 0) > 0)
             if gain > best_gain: best, best_gain = c, gain
         if best is None: break
@@ -87,6 +96,12 @@ def main():
         for k in feats[best["url"]]:
             if need.get(k, 0) > 0: need[k] -= 1
 
+    # young catalogs: caps can strangle the pool below a usable deck — fill to 60 by raw coverage
+    if len(pool) < 60 and remaining:
+        remaining.sort(key=lambda c: -sum(1 for k in feats[c["url"]] if need.get(k, 0) > 0))
+        for c in remaining:
+            if len(pool) >= 60: break
+            pool.append(c)
     covered = sum(1 for v in need.values() if v < QUOTA_PER_VALUE)
     print(f"pool: {len(pool)} items | feature values touched: {covered}/{len(need)}")
 
@@ -101,9 +116,14 @@ def main():
     cards = [{"url": c["url"], "image": c["image"], "title": c["title"], "brand": c.get("brand"),
               "price": c.get("price"), "category": c.get("category"), "attrs": slim(c["attrs"])}
              for c in pool]
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "deck.json")
+    fname = "deck.json" if gender == "men" else "deck_women.json"
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", fname)
     json.dump({"built": True, "cards": cards}, open(out, "w"))
     print(f"wrote {out} ({os.path.getsize(out)//1024} KB)")
+
+def main():
+    for g in ("men", "women"):
+        build_gender(g)
 
 if __name__ == "__main__":
     main()

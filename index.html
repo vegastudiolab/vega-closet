@@ -524,6 +524,19 @@
       <button class="fit-ghost" id="fitSkipAll" type="button">skip — the model starts blind</button>
     </div>
 
+    <!-- who are we dressing -->
+    <div class="fit-screen" id="fitGender">
+      <div class="fit-lead" style="margin-top:20px;">who are we dressing?</div>
+      <div class="fit-aside">this sets your racks, your sizes, and the pieces the model studies you with.</div>
+      <div class="fit-chips" style="margin-top:22px;">
+        <button class="fit-chip" data-g="men" style="flex:1; padding:22px 12px; font-size:12px;">menswear</button>
+        <button class="fit-chip" data-g="women" style="flex:1; padding:22px 12px; font-size:12px;">womenswear</button>
+      </div>
+      <div class="fit-mono" style="margin-top:14px;">YOU CAN ALWAYS RECALIBRATE LATER.</div>
+      <div style="flex:1"></div>
+      <button class="fit-btn" id="genderNext" type="button" disabled>continue</button>
+    </div>
+
     <!-- the deck -->
     <div class="fit-screen" id="fitDeck">
       <div class="fit-aside" style="margin-top:12px;">swipe right to pull it. left to pass. go with your gut — the model is watching how you decide, not what you can afford.</div>
@@ -620,6 +633,11 @@
       <div class="nuc-stats"><span>SIGNALS <b id="modelSig">0</b></span><span>ARCHIVE <b id="modelArch">0</b></span><span>DRIFT <b id="modelDrift">STABLE</b></span></div>
     </div>
 
+    <div class="fit-lbl">measurements — nothing that doesn't fit will ever appear</div>
+    <div class="fit-lbl" style="margin-top:10px; font-size:8.5px;">tops</div><div class="fit-chips" id="mSzTops"></div>
+    <div class="fit-lbl" style="font-size:8.5px;">waist</div><div class="fit-chips" id="mSzWaist"></div>
+    <div class="fit-lbl" style="font-size:8.5px;">shoes (us)</div><div class="fit-chips" id="mSzShoes"></div>
+
     <div class="fit-lbl">houses you trust — tap to add or remove</div>
     <input class="houses-search" id="modelSearch" placeholder="search — rick owens, lemaire, our legacy…" autocomplete="off" />
     <div class="houses-list" id="modelHouses"></div>
@@ -693,6 +711,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="brands.js"></script>
+<script src="brands_women.js"></script>
+<script>window.brandWall = g => (g === "women" ? (window.BRANDS_WOMEN || window.BRANDS_ALL) : window.BRANDS_ALL) || [];</script>
 <script>
   // ================= SUPABASE CLIENT =================
   const SUPABASE_URL = 'https://opmbwwodxlqktedxuppd.supabase.co';
@@ -1093,10 +1113,21 @@
     // cleared-from-view urls: the server drops these on the next rebuild, but until then the stored
     // feed payload still contains them — so honor the clear on load too, or reopening brings them back.
     const DISMISSED = new Set();
+    let HAS_SIZES = true;
     try {
       const { data: tr } = await sb.from('taste').select('payload').eq('user_id', userId).single();
       ((tr && tr.payload && tr.payload.signals && tr.payload.signals.dismissedUrls) || []).forEach(u => DISMISSED.add(u));
+      const zs = (tr && tr.payload && tr.payload.sizes) || {};
+      HAS_SIZES = !!((zs.tops || []).length && (zs.shoes || []).length);
     } catch(e){ console.error(e); }
+    // sized-less accounts browse everything, including what could never fit — nudge them once per session
+    if (!HAS_SIZES){
+      const n = document.createElement("div");
+      n.className = "note"; n.style.borderLeftColor = "var(--cart)"; n.style.cursor = "pointer";
+      n.textContent = "your sizes aren't locked — you're seeing pieces that may not fit. tap to fix in 20 seconds →";
+      document.getElementById("note").after(n);
+      n.addEventListener("click", () => { document.getElementById("openModel").click(); }, LSN);
+    }
 
     function applyStates(){
       document.querySelectorAll(".card").forEach(c=>{
@@ -1235,12 +1266,12 @@
       const LOVED = new Set();       // lowercased working set
       let existingLoved = [];        // original payload entries (preserve casing)
       let lovedExtra = [];           // loved names NOT in the survey list — still shown/removable
-      let archCount = 0;
+      let archCount = 0, modGender = "men";
       function stats(){ $("modelArch").textContent = archCount; $("modelHouseCount").textContent = LOVED.size; }
 
       function renderHouses(q){
-        // union: every loved brand is visible even if it was auto-promoted from taps (outside the 293)
-        const all = [...lovedExtra, ...(window.BRANDS_ALL || [])];
+        // union: every loved brand is visible even if it was auto-promoted from taps (outside the wall)
+        const all = [...lovedExtra, ...brandWall(modGender)];
         const list = q ? all.filter(b => b.includes(q)) : all;
         // loved-first when idle, so the model reads back what it already knows
         const ordered = q ? list : [...list].sort((a,b)=>(LOVED.has(b)?1:0)-(LOVED.has(a)?1:0));
@@ -1265,7 +1296,19 @@
           const p = (t && t.payload) || {};
           existingLoved = (p.brands && p.brands.loved) || [];
           existingLoved.forEach(b => LOVED.add((b||"").toLowerCase()));
-          const survey = new Set(window.BRANDS_ALL || []);
+          modGender = (p.gender || "men").toLowerCase();
+          const survey = new Set(brandWall(modGender));
+          // measurements: gendered chip sets, prefilled from what's on file
+          const cur = p.sizes || {};
+          const sets = modGender === "women"
+            ? { mSzTops:["xxs","xs","s","m","l","xl","0","2","4","6","8","10","12"], mSzWaist:["23","24","25","26","27","28","29","30","31","32"], mSzShoes:["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","11"] }
+            : { mSzTops:["xs","s","m","l","xl","xxl"], mSzWaist:["28","30","32","34","36","38","40","42","44"], mSzShoes:["8","9","10","11","12","13","14","15"] };
+          const curOf = { mSzTops:(cur.tops||[]), mSzWaist:(cur.waist||[]), mSzShoes:(cur.shoes||[]) };
+          for (const id in sets){
+            const el = document.getElementById(id);
+            el.innerHTML = sets[id].map(v => '<button class="fit-chip' + (curOf[id].includes(v) ? ' on' : '') + '" data-v="' + v + '">' + v + '</button>').join("");
+            el.querySelectorAll(".fit-chip").forEach(ch => ch.addEventListener("click", () => ch.classList.toggle("on"), LSN));
+          }
           lovedExtra = [...new Set(existingLoved.map(b => (b||"").toLowerCase()))].filter(b => b && !survey.has(b));
           archCount = ((p.uploads && p.uploads.digested) || []).length;
           seedH = 11; existingLoved.forEach(b => { for (const ch of (b||"")) seedH = (seedH*31 + ch.charCodeAt(0)) % 9973; });
@@ -1322,6 +1365,15 @@
           const { data: t } = await sb.from("taste").select("payload").eq("user_id", userId).single();
           const p = (t && t.payload) || {};
           (p.brands = p.brands || {}).loved = merged;
+          // measurements: save only if something is picked (never wipe sizes by accident)
+          const pk = id => [...document.querySelectorAll('#' + id + ' .fit-chip.on')].map(c => c.dataset.v);
+          const tops = pk("mSzTops"), waist = pk("mSzWaist"), shoesUs = pk("mSzShoes");
+          if (tops.length && waist.length && shoesUs.length){
+            const euOff = modGender === "women" ? 31 : 33;
+            const shoes = [...new Set(shoesUs.flatMap(n => [n, String(Math.round((+n + euOff) * 10) / 10)]))];
+            p.sizes = Object.assign(p.sizes || {}, { tops, waist, shoes });
+            if (modGender === "women") p.sizes.dresses = tops;
+          }
           await sb.from("taste").update({ payload: p }).eq("user_id", userId);
           $("modelSaved").textContent = "SAVED — SHAPES YOUR NEXT SCAN";
           setTimeout(close, 900);
@@ -1525,7 +1577,14 @@
       const fit = document.getElementById("fitting");
       fit.classList.add("on");
       const $ = id => document.getElementById(id);
-      const screens = ["fitCover","fitDeck","fitDone","fitRead","fitHouses","fitFit","fitBuild"];
+      const screens = ["fitCover","fitGender","fitDeck","fitDone","fitRead","fitHouses","fitFit","fitBuild"];
+      let FIT_GENDER = "men";
+      document.querySelectorAll("#fitGender .fit-chip").forEach(ch => ch.addEventListener("click", () => {
+        document.querySelectorAll("#fitGender .fit-chip").forEach(x => x.classList.remove("on"));
+        ch.classList.add("on"); FIT_GENDER = ch.dataset.g;
+        $("genderNext").disabled = false;
+      }, LSN));
+      $("genderNext").addEventListener("click", async () => { await loadDeck(); show("fitDeck"); dealCard(); }, LSN);
       function show(id){ screens.forEach(s => $(s).classList.toggle("on", s === id)); fit.scrollTop = 0; }
 
       // ---- the nucleus: never empty — lightly dense from frame one, grows with every signal ----
@@ -1600,7 +1659,9 @@
       const lovedCards = [];
       async function loadDeck(){
         try {
-          const r = await fetch("deck.json?v=" + Date.now());
+          // gendered deck; women fall back to the shared deck until deck_women.json ships
+          let r = await fetch((FIT_GENDER === "women" ? "deck_women.json" : "deck.json") + "?v=" + Date.now());
+          if (!r.ok) r = await fetch("deck.json?v=" + Date.now());
           const all = (await r.json()).cards.filter(c => c.image);
           for (let i = all.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [all[i], all[j]] = [all[j], all[i]]; }
           DECK = all.slice(0, 40);
@@ -1764,7 +1825,7 @@
       // ---- houses: the full browsable brand wall (293 names), search + tap-to-love ----
       const HOUSES_SEL = new Set();
       function renderHouses(q){
-        const all = (window.BRANDS_ALL || []);
+        const all = brandWall(FIT_GENDER);
         const list = q ? all.filter(b => b.includes(q)) : all;
         $("housesList").innerHTML = list.slice(0, 120).map(b =>
           '<button class="fit-chip' + (HOUSES_SEL.has(b) ? ' on' : '') + '" data-h="' + esc(b) + '">' + esc(b) + '</button>').join("") +
@@ -1779,7 +1840,7 @@
       function buildHouses(){
         // pre-love what the deck already told us
         [...$("readBrands").querySelectorAll(".fit-chip.on")].forEach(c => HOUSES_SEL.add(c.dataset.b.toLowerCase()));
-        lovedCards.map(c => (c.brand || "").toLowerCase()).filter(b => (window.BRANDS_ALL || []).includes(b))
+        lovedCards.map(c => (c.brand || "").toLowerCase()).filter(b => brandWall(FIT_GENDER).includes(b))
           .forEach(b => HOUSES_SEL.add(b));
         $("housesCount").textContent = HOUSES_SEL.size;
         renderHouses("");
@@ -1794,22 +1855,32 @@
         el.querySelectorAll(".fit-chip").forEach(ch => ch.addEventListener("click", () => { ch.classList.toggle("on"); checkFit(); }, LSN));
       }
       function buildSizeChips(){
-        chipGroup($("szTops"), ["xs", "s", "m", "l", "xl", "xxl"]);
-        chipGroup($("szWaist"), ["28", "30", "32", "34", "36", "38", "40", "42", "44"]);
-        chipGroup($("szShoes"), ["8", "9", "10", "11", "12", "13", "14", "15"]);
+        if (FIT_GENDER === "women"){
+          chipGroup($("szTops"), ["xxs", "xs", "s", "m", "l", "xl", "0", "2", "4", "6", "8", "10", "12"]);
+          chipGroup($("szWaist"), ["23", "24", "25", "26", "27", "28", "29", "30", "31", "32"]);
+          chipGroup($("szShoes"), ["5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "11"]);
+        } else {
+          chipGroup($("szTops"), ["xs", "s", "m", "l", "xl", "xxl"]);
+          chipGroup($("szWaist"), ["28", "30", "32", "34", "36", "38", "40", "42", "44"]);
+          chipGroup($("szShoes"), ["8", "9", "10", "11", "12", "13", "14", "15"]);
+        }
       }
       function picked(el){ return [...el.querySelectorAll(".fit-chip.on")].map(c => c.dataset.v); }
       function checkFit(){ $("fitNext").disabled = !(picked($("szTops")).length && picked($("szWaist")).length && picked($("szShoes")).length); }
       $("fitNext").addEventListener("click", async () => {
         const tops = picked($("szTops")), waist = picked($("szWaist")), shoesUs = picked($("szShoes"));
-        const shoes = [...new Set(shoesUs.flatMap(n => [n, String(+n + 33)]))];   // us + eu equivalents
+        // eu equivalents: men's EU = US+33; women's EU = US+31 (US 7 = EU 38)
+        const euOff = FIT_GENDER === "women" ? 31 : 33;
+        const shoes = [...new Set(shoesUs.flatMap(n => [n, String(Math.round((+n + euOff) * 10) / 10)]))];
         const brands = [...new Set([...[...$("readBrands").querySelectorAll(".fit-chip.on")].map(c => c.dataset.b), ...HOUSES_SEL])];
         const ceiling = $("readCeiling").querySelector(".fit-chip.on")?.dataset.c || "";
         if (!PREVIEW){
           try {
             const { data: t } = await sb.from("taste").select("payload").eq("user_id", userId).single();
             const p = (t && t.payload) || {};
+            p.gender = FIT_GENDER;
             p.sizes = { tops, waist, shoes };
+            if (FIT_GENDER === "women") p.sizes.dresses = tops;    // dress sizes track tops (alpha + numeric)
             if (ceiling) p.ceiling = ceiling;
             const bl = ((p.brands = p.brands || {}).loved = p.brands.loved || []);
             brands.forEach(b => { if (!bl.some(x => x.toLowerCase() === b.toLowerCase())) bl.push(b); });
@@ -1908,7 +1979,7 @@
         cancelAnimationFrame(raf);
         fit.classList.remove("on");
       }, LSN);
-      $("fitBegin").addEventListener("click", async () => { await loadDeck(); show("fitDeck"); dealCard(); }, LSN);
+      $("fitBegin").addEventListener("click", () => show("fitGender"), LSN);
       nucStats(0);
     })();
 
