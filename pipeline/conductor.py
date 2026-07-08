@@ -146,23 +146,26 @@ def in_size(cat, s, brand="", gender="men"):
     return bool(rx and rx.search(s))
 
 def load_union_sizes(taste_rows):
-    """Union every user's payload.sizes so the shared catalog fits ANY user."""
-    u = {"tops": set(), "waist": set(), "shoes": set(), "exceptions": []}
-    found = False
+    """Union users' payload.sizes PER GENDER — a women's 4 must never widen the men's pool.
+    Genders with no sized users keep the operator defaults."""
+    global UNION_SIZES
+    fresh = {}
     for t in taste_rows:
-        sz = ((t.get("payload") or {}).get("sizes")) or {}
+        p = t.get("payload") or {}
+        sz = p.get("sizes") or {}
         if not sz: continue
-        found = True
-        u["tops"]  |= {norm(x) for x in (sz.get("tops") or [])}
-        u["waist"] |= {norm(x) for x in (sz.get("waist") or [])}
-        u["shoes"] |= {norm(x) for x in (sz.get("shoes") or [])}
+        g = norm(p.get("gender")) or "men"
+        if g not in ("men", "women"): g = "men"
+        u = fresh.setdefault(g, {"tops": set(), "waist": set(), "shoes": set(),
+                                 "dresses": set(), "skirts": set(), "exceptions": []})
+        for k in ("tops", "waist", "shoes", "dresses", "skirts"):
+            u[k] |= {norm(x) for x in (sz.get(k) or [])}
         for ex in (sz.get("exceptions") or []):
             u["exceptions"].append({"brand": ex.get("brand",""), "category": ex.get("category",""),
                                     "add": {norm(x) for x in (ex.get("add") or [])}})
-    if found:
-        global UNION_SIZES
-        UNION_SIZES = u
-        print(f"size union across users: tops {sorted(u['tops'])} waist {sorted(u['waist'])} shoes {sorted(u['shoes'])}")
+    for g, u in fresh.items():
+        UNION_SIZES[g] = u
+        print(f"size union [{g}]: tops {sorted(u['tops'])} waist {sorted(u['waist'])} shoes {sorted(u['shoes'])}")
 
 # ---------- seasonal rotation (rank-time only — stored scores stay pure vision) ----------
 # Charles travels LA + builds wardrobe year-round: LIGHT jackets stay welcome in summer,
