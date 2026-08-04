@@ -324,13 +324,34 @@ def build_for_user(uid, taste, catalog):
     # gated lane: un-acted items from a gated combo/brand must rank in the user's TOP band to
     # surface (stage-1 percentile — logistic scores aren't on the old 0-1 vision scale). Legacy
     # items without attributes keep the old absolute vision gate. Unrated raw finds never gate.
+    #
+    # brand scope: the catalog is the UNION of every user's loved brands, so it holds brands THIS
+    # user never chose (audit 2026-08-04: another user's Amiri/Casablanca surfacing for Charles).
+    # Un-acted items from brands outside the user's own wall (loved list + brands they've
+    # liked/carted) only surface as GEMS — top-5% of their fitted taste model — honoring
+    # "don't miss a gem, judge by taste not brand" without flooding the feed with strangers.
+    # Users with no loved list yet (mid-onboarding) keep the full browse. Raw scans stay exempt.
+    my_brands = {norm(b) for b in ((taste.get("brands") or {}).get("loved") or []) if b}
+    my_brands |= {norm(x.get("brand")) for x in sigs if x["action"] in ("liked", "carted") and x.get("brand")}
+    def brand_mine(b):
+        nb = norm(b)
+        if not nb: return False
+        if nb in my_brands: return True
+        return any(len(m) > 4 and (m in nb or nb in m) for m in my_brands)  # Rick Owens ~ Rick Owens DRKSHDW
     n_gated_out = 0
+    n_foreign_out = 0
     s1_pool = sorted(it["_s1"] for it in items if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"])
     gate_thr = s1_pool[int(0.88 * (len(s1_pool) - 1))] if s1_pool else None
+    gem_thr = s1_pool[int(0.95 * (len(s1_pool) - 1))] if s1_pool else None
     kept = []
     for it in items:
         if not it["isArchived"] and not it["isLiked"] and "unrated" not in (it.get("reasons") or []):
             b, cc = norm(it.get("brand")), norm(it.get("category"))
+            if my_brands and not brand_mine(it.get("brand")):
+                v = it["_s1"]
+                if not (v is not None and gem_thr is not None and v >= gem_thr):
+                    n_foreign_out += 1
+                    continue
             if (b, cc) in gated or b in deep_gated:
                 v = it["_s1"]
                 passes = (v >= gate_thr) if (v is not None and gate_thr is not None) else (float(it.get("base_score") or 0) >= min(GATE_VISION, GEM_OVERRIDE))
@@ -429,7 +450,7 @@ def build_for_user(uid, taste, catalog):
     api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
     print(f"  user {uid[:8]}: {total} to review, {n_liked} liked, {n_arch} archived | "
           f"stage-2 vision on {n_stage2} top items | {n_gated_out} gated out across {len(gated)} combos, "
-          f"deep-gated: {deep_gated} | {n_size_retired} size-retired"
+          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall (gems kept) | {n_size_retired} size-retired"
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():
