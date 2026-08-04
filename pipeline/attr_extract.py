@@ -28,6 +28,7 @@ ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
 ONLY_TAPPED = os.environ.get("ONLY_TAPPED", "").strip() in ("1", "true", "yes")
 LIMIT = int(os.environ.get("LIMIT", "0"))
 WORKERS = int(os.environ.get("WORKERS", "8"))
+GENDER = os.environ.get("GENDER", "").strip().lower()   # men | women | '' (all) — scope a backfill run's spend
 
 def http(method, url, body=None, headers=None, timeout=120):
     data = json.dumps(body).encode() if body is not None else None
@@ -84,7 +85,7 @@ ATTR_TOOL = {
     }
 }
 
-PROMPT = ("Look at this menswear item and record its objective visual attributes. "
+PROMPT = ("Look at this fashion item (menswear or womenswear) and record its objective visual attributes. "
           "Judge only what you can see — no taste opinions. Title for context: %s")
 
 def extract(item):
@@ -102,7 +103,9 @@ def extract(item):
     return None
 
 def main():
-    todo = fetch_all("catalog", "url,title,image", "&attrs=is.null&image=like.http*")
+    qs = "&attrs=is.null&image=like.http*"
+    if GENDER in ("men", "women"): qs += "&gender=eq." + GENDER
+    todo = fetch_all("catalog", "url,title,image", qs)
     if ONLY_TAPPED:
         tapped = {s["url"] for s in fetch_all("signals", "url")}
         todo = [t for t in todo if t["url"] in tapped]

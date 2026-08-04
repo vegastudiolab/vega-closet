@@ -69,27 +69,37 @@ GENDER = os.environ.get("GENDER", "").strip().lower()   # scan scope: men | wome
 # accessories are OPT-IN: only an explicit accessories scan pulls them (97% are "one size" —
 # letting them into every scan would flood the feed). Everything routes through ALLOWED_CATS.
 ALLOWED_CATS = ("accessories",) if os.environ.get("CATEGORY", "").strip().lower() == "accessories" else CATS
-def infer_cat(title):
+def infer_cat(title, default="tops"):
     t = norm(title)
-    if re.search(r"\bdress\b|\bgown\b|\bmaxi\b|\bmidi\b|\bbodycon\b", t) and not re.search(r"dress shirt|dress pant|dress shoe", t): return "dresses"
-    if re.search(r"\bskirt\b", t): return "skirts"
-    if re.search(r"jacket|bomber|coat|parka|puffer|trench|vest|cardigan|anorak|blazer|overshirt|shearling|hoodie.*zip", t): return "outerwear"
-    if re.search(r"pant|jean|trouser|cargo|short|jogger|sweatpant|denim|legging", t): return "bottoms"
+    if re.search(r"\bskirt\b", t): return "skirts"      # before the dress check: a "midi skirt" is a skirt
+    # bare midi/maxi/bodycon are NOT dress evidence ("Maxi Jeans" exists) — require dress/gown
+    if re.search(r"\bdress\b|\bgown\b", t) and not re.search(r"dress shirt|dress pant|dress shoe", t): return "dresses"
+    # \bcoats?\b not bare "coat": "Coated Jeans" must not become outerwear
+    if re.search(r"jacket|bomber|\bcoats?\b|overcoat|peacoat|raincoat|parka|puffer|trench|vest|cardigan|anorak|blazer|overshirt|shearling|hoodie.*zip", t): return "outerwear"
+    # "short sleeve" is tops evidence in its own right (many tee titles carry no tee/shirt word);
+    # must run before the bottoms tokens or "Denim Short-Sleeve" reads as denim=bottoms
+    if re.search(r"short[- ]?sleeve", t) and not re.search(r"\bshorts\b", t): return "tops"
+    # word-level bottoms tokens: bare "short"/"cargo"/"denim" mis-filed Short Sleeve tees, cargo
+    # jackets and denim shirts as bottoms — require the plural/garment form or a safe neighborhood
+    if re.search(r"pant|jean|trouser|chino|slack|culotte|\bjorts?\b|\bcargos\b|\bshorts\b|\bbottoms\b|\bbell.?bottoms?\b|\bflares\b|jogger|sweatpant|\bdenims?\b(?!\s*(?:jacket|shirt|overshirt|vest|coat|chore))|legging", t): return "bottoms"
     if re.search(r"tee|t-shirt|shirt|hoodie|sweater|knit|polo|tank|longsleeve|long sleeve|turtleneck|sweatshirt|jumper|blouse|top\b|cami", t): return "tops"
     if re.search(r"boot|sneaker|shoe|loafer|sandal|mule|derby|trainer|heel|pump|flat\b", t): return "footwear"
     if re.search(r"hat|cap|bag|wallet|belt|sunglass|jewel|scarf|glove|sock|phone case|keychain", t): return None
-    return "tops"
+    return default   # no garment word at all — callers that need real evidence pass default=None
 
 # gender detection — TAG each item (we used to DROP women's; now we keep + label so women can shop).
-_WOMENS_RX = re.compile(r"\bwomen'?s?\b|\bladies\b|\bfemme\b|\bgirl'?s?\b|\bwmns\b", re.I)
-_MENS_RX   = re.compile(r"\bmen'?s?\b|\bhomme\b|\bmens\b|\bboy'?s?\b", re.I)
+_WOMENS_RX = re.compile(r"\bwomen'?s?\b|\bladies\b|\bfemme\b|\bwmns\b", re.I)  # no bare girl/boy tokens:
+_MENS_RX   = re.compile(r"\bmen'?s?\b|\bhomme\b|\bmens\b", re.I)               # graphic-tee motifs ("Naked Girls Logo") and brands (Girls Don't Cry, Boy London) are not departments
 def infer_gender(title, cat=None, hint=None):
-    if hint in ("men", "women", "unisex"): return hint
+    # TITLE FIRST: an explicit "Women's ..." beats the department hint — sellers mislist across
+    # departments constantly (the old hint-first order made the title check dead code and let
+    # women's pieces into men's feeds tagged men).
     t = title or ""
     if _WOMENS_RX.search(t): return "women"
     if _MENS_RX.search(t): return "men"
     if cat in ("dresses", "skirts"): return "women"     # menswear doesn't stock these
-    return hint or "men"                                 # source department is the real signal (passed as hint)
+    if hint in ("men", "women", "unisex"): return hint  # source department / URL taxonomy
+    return "men"
 
 _BLZ  = re.compile(r"blazer|sport ?coat|suit jacket|\bsuit\b|tuxedo|dinner jacket|two[- ]?button|double[- ]?breasted|single[- ]?breasted|peak lapel|notch lapel|pinstripe", re.I)
 _KEEP = re.compile(r"padded|deconstruct|distress|rivet|asymmetric|cargo|tech|nylon|leather|denim|fleece|hood|work|bomber|track|puffer|anorak|coach|moto|biker|quilt", re.I)
@@ -355,6 +365,15 @@ TRR_TAXCAT = {"men/clothing/outerwear":"outerwear", "men/clothing/sweaters-sweat
 TRR_TAXCAT_W = {"women/clothing/coats-and-jackets":"outerwear", "women/clothing/sweaters":"tops",
                 "women/clothing/tops":"tops", "women/clothing/pants":"bottoms", "women/clothing/jeans":"bottoms",
                 "women/clothing/dresses":"dresses", "women/clothing/skirts":"skirts", "women/shoes":"footwear"}
+# TRR product URLs carry the item's REAL taxonomy (/products/<gender>/clothing/<cat>/slug) and the
+# GraphQL API does NOT reliably honor taxonsPermalink (audit 2026-08-04: jeans and women's skirts came
+# back from a men's-shirts request and were stored as men's tops). The URL is ground truth — always
+# derive category + gender from it; the requested taxon is only the fallback when the URL won't parse.
+TRR_URL_RX  = re.compile(r"/products/(men|women)/(?:clothing/)?([a-z0-9-]+)/")
+TRR_URL_CAT = {"jeans":"bottoms","pants":"bottoms","shorts":"bottoms","shirts":"tops","t-shirts":"tops",
+               "sweaters-sweatshirts":"tops","sweaters":"tops","tops":"tops","knitwear":"tops",
+               "outerwear":"outerwear","coats-and-jackets":"outerwear","jackets":"outerwear","coats":"outerwear",
+               "shoes":"footwear","sneakers":"footwear","boots":"footwear","dresses":"dresses","skirts":"skirts"}
 
 def _trr_json(raw):
     i = (raw or "").find('{"data"')
@@ -393,24 +412,29 @@ def _trr_taxon(taxon, cat, slugs, loved_raw, gender):
         for e in pr.get("edges", []):
             n = e.get("node") or {}
             brand = (n.get("brandUnion") or {}).get("name") or ""
-            # TAG gender: taxon is the base, but an explicit gender attribute overrides (catches cross-leaks
-            # so a men user never sees a women's piece and vice-versa).
+            url = (n.get("url") or "").split("?")[0]
+            # category + gender from the item's OWN URL taxonomy (TRR ignores the taxon filter);
+            # gender attribute is the secondary signal (usually absent), scan scope the last resort.
+            um = TRR_URL_RX.search(url)
+            ucat = TRR_URL_CAT.get(um.group(2)) if um else None
             gattr = " ".join(str(x) for a in (n.get("attributes") or []) if str(a.get("type","")).upper()=="GENDER" for x in (a.get("values") or [])).lower()
-            g = "women" if ("women" in gattr or gattr == "female") else ("men" if ("men" in gattr or gattr == "male") else gender)
+            gfall = "women" if ("women" in gattr or gattr == "female") else ("men" if ("men" in gattr or gattr == "male") else gender)
+            g = um.group(1) if um else gfall
             sizeparts = [str(x) for a in (n.get("attributes") or []) if a.get("type") in ("CLOTHING_SIZE","SHOE_SIZE","MENS_WAIST","WOMENS_SIZE","DRESS_SIZE") for x in (a.get("values") or [])]
             price = None
             try: price = (((n.get("price") or {}).get("final") or {}).get("usdCents") or 0) / 100 or None
             except Exception: pass
             imgs = n.get("images") or []
-            out.append({"url": (n.get("url") or "").split("?")[0], "id": str(n.get("id") or n.get("sku") or ""),
+            out.append({"url": url, "id": str(n.get("id") or n.get("sku") or ""),
                         "platform": "therealreal", "brand": brand_matches(brand, loved_raw) or brand,
-                        "title": n.get("name", ""), "category": cat, "price": price, "size": " ".join(sizeparts),
+                        "title": n.get("name", ""), "category": ucat or cat, "price": price, "size": " ".join(sizeparts),
                         "condition": n.get("condition") or "gently used", "gender": g,
                         "image": ((imgs[0].get("url", "") if imgs and isinstance(imgs[0], dict) else "") or "").split("?")[0]})
         pi = pr.get("pageInfo") or {}
         after = pi.get("endCursor")
         if not pi.get("hasNextPage"): break
-    print(f"  trr {taxon}: {len(out)} items")
+    off = sum(1 for r in out if r.get("category") != cat or r.get("gender") != gender)
+    print(f"  trr {taxon}: {len(out)} items" + (f" ({off} off-taxon, retagged from URL)" if off else ""))
     return out
 
 def scrape_trr(loved, loved_raw, gender="men"):
