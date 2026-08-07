@@ -454,12 +454,17 @@ def build_for_user(uid, taste, catalog):
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():
+    import time as _time
+    t0 = _time.time()
     catalog = fetch_all("catalog", "url,id,platform,brand,title,category,price,size,condition,image,reasons,base_score,sz,first_seen,last_seen,attrs,gender")
     users = fetch_all("taste", "user_id,payload")
     print(f"catalog {len(catalog)} items | {len(users)} user(s)")
     for u in users:
         build_for_user(u["user_id"], u.get("payload") or {}, catalog)
     print("REBUILD DONE")
+    taste_model.write_run_record(URL, SECRET, "rebuild",
+                                 {"users": len(users), "catalog": len(catalog),
+                                  "duration_s": round(_time.time() - t0)})
 
 if __name__ == "__main__":
     main()

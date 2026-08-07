@@ -36,6 +36,10 @@ BRANDS_PER_RUN= int(os.environ.get("BRANDS_PER_RUN", "24"))
 MIN_NEW  = int(os.environ.get("MIN_NEW", "0"))   # keep pulling fresh grailed brands until at least this many new (0 = off)
 QUERY    = os.environ.get("QUERY", "").strip()  # optional keyword/style/color search term (passes to Algolia)
 CATEGORY = os.environ.get("CATEGORY", "").strip().lower()  # optional single category: outerwear|tops|bottoms|footwear|accessories
+import time as _time
+_T0 = _time.time()
+FIRECRAWL_CALLS = [0]   # scraper-cost counters for the Nucleus run record
+APIFY_CALLS = [0]
 NO_VISION = os.environ.get("NO_VISION", "").strip().lower() in ("1", "true", "yes")  # raw scan: skip taste rating, tag items "unrated"
 TODAY = date.today().isoformat()
 
@@ -244,6 +248,7 @@ def brand_matches(text, loved_raw):
 
 # ---------- source scrapers ----------
 def apify_run(actor, inp, memory=1024, wait=280):
+    APIFY_CALLS[0] += 1
     st, run = http("POST", f"https://api.apify.com/v2/acts/{actor}/runs?token={APIFY}&memory={memory}", inp)
     if st in (402, 429):
         print(f"  APIFY CAP/LIMIT ({st}) — stopping this source, keeping what we have"); return None
@@ -385,6 +390,7 @@ def _trr_json(raw):
 
 def trr_graphql(variables):
     url = "https://api.therealreal.com/graphql?query=" + urllib.parse.quote(TRR_QUERY) + "&variables=" + urllib.parse.quote(json.dumps(variables))
+    FIRECRAWL_CALLS[0] += 1
     st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",                     # Firecrawl stealth clears TRR's PerimeterX wall
                  {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
                  {"Authorization": "Bearer " + FIRE}, timeout=180)
@@ -450,6 +456,7 @@ def scrape_trr(loved, loved_raw, gender="men"):
     return out
 
 def firecrawl_scrape(url, schema, proxy="auto", wait=9000, return_meta=False):
+    FIRECRAWL_CALLS[0] += 1
     st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",
                  {"url":url,"formats":[{"type":"json","schema":schema}],"waitFor":wait,"proxy":proxy},
                  {"Authorization":"Bearer "+FIRE}, timeout=180)
@@ -707,6 +714,12 @@ def main():
         print(f"  inserted {inserted}/{len(rows)}")
     if inserted < len(rows): print(f"WARNING: only {inserted} of {len(rows)} stored — see insert fail above")
     print("CONDUCTOR DONE — new items:", inserted)
+    taste_model.write_run_record(SB_URL, SB_SECRET, "scan", {
+        "sources": SOURCES, "genders": genders, "brands_scanned": len(todays),
+        "found": len(found), "new": inserted,
+        "firecrawl_calls": FIRECRAWL_CALLS[0], "apify_calls": APIFY_CALLS[0],
+        "duration_s": round(_time.time() - _T0),
+    })
 
 def size_bucket(it):
     s = norm(it.get("size")); cat = it.get("category","")

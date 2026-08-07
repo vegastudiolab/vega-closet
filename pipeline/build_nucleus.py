@@ -169,8 +169,66 @@ def main():
     comp["attrs_missing"] = counted("/rest/v1/catalog?select=url&attrs=is.null")
     comp["attrs_missing_men"] = counted("/rest/v1/catalog?select=url&attrs=is.null&gender=eq.men")
 
+    # ---- costs: aggregate the per-run records the pipelines drop in nucleus/runs/ ----
+    # Estimates from logged tokens at list prices; scraper entries are call counts (plan-billed).
+    PRICES = {"claude-haiku-4-5-20251001": (1.0, 5.0), "claude-sonnet-5": (3.0, 15.0)}  # $/MTok in, out
+    FIXED_MONTHLY = float(os.environ.get("NUCLEUS_FIXED_MONTHLY", "25"))                # supabase pro etc.
+    runs = []
+    stl, listing = http("POST", "/storage/v1/object/list/wardrobe",
+                        {"prefix": f"{ADMIN_UID}/nucleus/runs", "limit": 400,
+                         "sortBy": {"column": "name", "order": "desc"}})
+    names = [o["name"] for o in listing if isinstance(o, dict) and o.get("name", "").endswith(".json")] if stl == 200 and isinstance(listing, list) else []
+    cutoff = (NOW - timedelta(days=90)).strftime("%Y%m%dT%H%M%SZ")
+    for name in names:
+        if name < cutoff:                                       # prune old records
+            http("DELETE", f"/storage/v1/object/wardrobe/{ADMIN_UID}/nucleus/runs/{name}")
+            continue
+        strun, rec = http("GET", f"/storage/v1/object/wardrobe/{ADMIN_UID}/nucleus/runs/{name}")
+        if strun == 200 and isinstance(rec, dict): runs.append(rec)
+    for r in runs:
+        tin = tout = calls = fail = 0; usd = 0.0
+        for stage, u in (r.get("ai") or {}).items():
+            pi, po = PRICES.get(u.get("model"), (1.0, 5.0))
+            tin += u.get("in", 0); tout += u.get("out", 0)
+            calls += u.get("calls", 0); fail += u.get("fail", 0)
+            usd += u.get("in", 0) / 1e6 * pi + u.get("out", 0) / 1e6 * po
+        r["_calls"], r["_fail"], r["_in"], r["_out"], r["_usd"] = calls, fail, tin, tout, round(usd, 4)
+    runs.sort(key=lambda r: r.get("at") or "", reverse=True)
+    by_day = defaultdict(lambda: {"usd": 0.0, "calls": 0, "fail": 0, "firecrawl": 0})
+    for r in runs:
+        day = (r.get("at") or "")[:10]
+        if not day: continue
+        b = by_day[day]; b["usd"] += r["_usd"]; b["calls"] += r["_calls"]; b["fail"] += r["_fail"]
+        b["firecrawl"] += r.get("firecrawl_calls") or 0
+    days7 = [(NOW.date() - timedelta(days=i)).isoformat() for i in range(7)]
+    usd_7d = sum(by_day[d]["usd"] for d in days7 if d in by_day)
+    days_seen = len([d for d in days7 if d in by_day]) or 1
+    avg_day = usd_7d / days_seen
+    true_day = avg_day + FIXED_MONTHLY / 30
+    stage_7d = defaultdict(lambda: {"calls": 0, "fail": 0, "usd": 0.0})
+    for r in runs:
+        if (r.get("at") or "")[:10] not in days7: continue
+        for stage, u in (r.get("ai") or {}).items():
+            pi, po = PRICES.get(u.get("model"), (1.0, 5.0))
+            s = stage_7d[stage]; s["calls"] += u.get("calls", 0); s["fail"] += u.get("fail", 0)
+            s["usd"] += u.get("in", 0) / 1e6 * pi + u.get("out", 0) / 1e6 * po
+    costs = {
+        "today_usd": round(by_day.get(TODAY, {}).get("usd", 0.0), 3),
+        "usd_7d": round(usd_7d, 3), "avg_day_usd": round(avg_day, 3),
+        "fixed_monthly_usd": FIXED_MONTHLY, "true_day_usd": round(true_day, 3),
+        "per_active_user_day_usd": round(true_day / max(pulse["active_7d"], 1), 3),
+        "ai_fail_7d": sum(by_day[d]["fail"] for d in days7 if d in by_day),
+        "firecrawl_7d": sum(by_day[d]["firecrawl"] for d in days7 if d in by_day),
+        "stages_7d": {k: {"calls": v["calls"], "fail": v["fail"], "usd": round(v["usd"], 3)} for k, v in stage_7d.items()},
+        "by_day": {d: {"usd": round(v["usd"], 3), "calls": v["calls"], "fail": v["fail"]} for d, v in sorted(by_day.items())[-30:]},
+        "runs": [{k: r.get(k) for k in ("at", "kind", "sources", "genders", "found", "new", "users",
+                                        "todo", "stored", "firecrawl_calls", "apify_calls", "duration_s")}
+                 | {"calls": r["_calls"], "fail": r["_fail"], "tin": r["_in"], "tout": r["_out"], "usd": r["_usd"]}
+                 for r in runs[:40]],
+    }
+
     payload = {"built_at": NOW.isoformat(), "pulse": pulse, "users": users,
-               "funnel": funnel, "brands": brands, "catalog": comp}
+               "funnel": funnel, "brands": brands, "catalog": comp, "costs": costs}
 
     # ---- rolling daily history (merge with previous snapshot, replace today's row) ----
     obj = f"/storage/v1/object/wardrobe/{ADMIN_UID}/nucleus/nucleus.json"
@@ -180,7 +238,7 @@ def main():
     history.append({"d": TODAY, "users": pulse["users_total"], "active7": pulse["active_7d"],
                     "taps7": pulse["taps_7d"], "cat": pulse["catalog_total"],
                     "new7": pulse["catalog_new_7d"], "median_live": pulse["feed_live_median"],
-                    "starved": pulse["feeds_starved"]})
+                    "starved": pulse["feeds_starved"], "usd": costs["today_usd"]})
     payload["history"] = history[-180:]
 
     body = json.dumps(payload).encode()

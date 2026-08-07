@@ -69,6 +69,12 @@
   input[type=search] { font-family:var(--mono); font-size:11px; background:var(--panel); color:var(--ink);
                        border:1px solid var(--line); padding:5px 10px; width:200px; margin-bottom:8px; }
   input[type=search]:focus { outline:none; border-color:var(--acc); }
+  .tabs { display:flex; gap:0; margin:2px 0 6px; border-bottom:1px solid var(--line); }
+  .tabs button { font-family:var(--mono); font-size:9.5px; letter-spacing:0.22em; text-transform:uppercase;
+                 background:transparent; color:var(--dim); border:none; padding:8px 16px 9px; cursor:pointer;
+                 border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tabs button.on { color:var(--acc); border-bottom-color:var(--acc); }
+  .note { font-size:9.5px; color:var(--faint); margin-top:10px; line-height:1.6; }
   @media (max-width:640px){ body{padding:14px 10px 60px} .stat b{font-size:21px} }
 </style>
 </head>
@@ -80,7 +86,12 @@
     <button id="refresh" style="margin-top:6px">refresh</button>
   </div>
 </div>
+<div class="tabs" id="tabs" style="display:none">
+  <button data-v="overview" class="on">overview</button>
+  <button data-v="costs">costs</button>
+</div>
 <div id="root"><div class="gate">loading…</div></div>
+<div id="costsview" style="display:none"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -96,8 +107,73 @@ const age = (iso) => { if (!iso) return '—'; const h = (Date.now() - new Date(
 
 let DATA = null, brandSort = { k:'items', dir:-1 };
 
+function usd(n) { return n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function renderCosts(d) {
+  const c = d.costs;
+  const el = $('#costsview');
+  if (!c || !(c.runs || []).length) {
+    el.innerHTML = `<div class="gate">no run records yet — cost telemetry starts with the next scan or rebuild.</div>`;
+    return;
+  }
+  let h = '';
+  const failCls = c.ai_fail_7d > 0 ? 'bad' : 'acc';
+  h += `<h2>burn</h2><div class="pulse">
+    <div class="stat"><b>${usd(c.today_usd)}</b><span>ai · today</span></div>
+    <div class="stat"><b>${usd(c.usd_7d)}</b><span>ai · 7d</span><small>${usd(c.avg_day_usd)} avg/day</small></div>
+    <div class="stat acc"><b>${usd(c.true_day_usd)}</b><span>true cost / day</span><small>ai avg + $${c.fixed_monthly_usd}/mo fixed</small></div>
+    <div class="stat"><b>${usd(c.per_active_user_day_usd)}</b><span>per active user / day</span></div>
+    <div class="stat ${failCls}"><b>${fmt(c.ai_fail_7d)}</b><span>ai failures · 7d</span></div>
+    <div class="stat"><b>${fmt(c.firecrawl_7d)}</b><span>firecrawl calls · 7d</span><small>plan-billed — see provider</small></div>
+  </div>`;
+
+  const st = Object.entries(c.stages_7d || {});
+  if (st.length) {
+    h += `<h2>by stage · 7d</h2><div class="scroll" style="max-height:none"><table><thead><tr>
+      <th>stage</th><th>calls</th><th>failures</th><th>est cost</th></tr></thead><tbody>`
+      + st.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${fmt(v.calls)}</td>
+          <td>${v.fail ? '<span style="color:var(--bad)">' + fmt(v.fail) + '</span>' : '<span class=dim>0</span>'}</td>
+          <td>${usd(v.usd)}</td></tr>`).join('') + `</tbody></table></div>`;
+  }
+
+  const days = Object.entries(c.by_day || {});
+  if (days.length) {
+    const mx = Math.max(...days.map(([, v]) => v.usd), 0.01);
+    h += `<h2>ai spend by day</h2><div class="days">` + days.map(([k, v]) =>
+      `<div class="d" style="height:${Math.max(3, v.usd / mx * 100)}%" title="${k}: ${usd(v.usd)} · ${v.calls} calls"><i>${k.slice(5)}</i></div>`).join('') + `</div><div style="height:18px"></div>`;
+  }
+
+  h += `<h2>runs · last ${(c.runs || []).length}</h2><div class="scroll"><table><thead><tr>
+    <th>when</th><th>kind</th><th>detail</th><th>ai calls</th><th>tokens</th><th>est cost</th><th>fc</th><th>took</th>
+    </tr></thead><tbody>` + (c.runs || []).map(r => {
+      const detail = r.kind === 'scan' ? `${esc(r.sources || '')} · +${fmt(r.new)} new`
+                   : r.kind === 'rebuild' ? `${fmt(r.users)} feeds`
+                   : r.kind === 'attrs' ? `${fmt(r.stored)}/${fmt(r.todo)} attributed` : '';
+      return `<tr><td>${age(r.at)} ago</td><td>${esc(r.kind)}</td><td class="dim">${detail}</td>
+        <td>${fmt(r.calls)}${r.fail ? ' <span style="color:var(--bad)">(' + fmt(r.fail) + ' fail)</span>' : ''}</td>
+        <td class="dim">${fmt(r.tin)} / ${fmt(r.tout)}</td><td>${usd(r.usd)}</td>
+        <td class="dim">${r.firecrawl_calls ? fmt(r.firecrawl_calls) : '—'}</td>
+        <td class="dim">${r.duration_s ? Math.round(r.duration_s / 60) + 'm' : '—'}</td></tr>`;
+    }).join('') + `</tbody></table></div>`;
+
+  h += `<div class="note">estimates = logged tokens × list prices (haiku $1/$5, sonnet $3/$15 per MTok).
+    firecrawl and apify are call counts — exact spend lives on their dashboards. fixed = supabase plan.
+    scraping and attribute extraction are one-time costs per item, shared by every user; stage-2 vision is
+    per-user but cached in user_scores, so a piece is never judged twice for the same person.</div>`;
+  el.innerHTML = h;
+}
+
+function showTab(v) {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  $('#root').style.display = v === 'overview' ? '' : 'none';
+  $('#costsview').style.display = v === 'costs' ? '' : 'none';
+}
+document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.v)));
+
 function render(d) {
   DATA = d;
+  $('#tabs').style.display = 'flex';
+  renderCosts(d);
   $('#built').textContent = 'built ' + age(d.built_at) + ' ago · ' + new Date(d.built_at).toLocaleString();
   const p = d.pulse || {}, f = d.funnel || {}, c = d.catalog || {};
   const starvedCls = p.feeds_starved > 0 ? 'bad' : 'acc';

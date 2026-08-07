@@ -88,6 +88,8 @@ ATTR_TOOL = {
 PROMPT = ("Look at this fashion item (menswear or womenswear) and record its objective visual attributes. "
           "Judge only what you can see — no taste opinions. Title for context: %s")
 
+USAGE = {"model": "claude-haiku-4-5-20251001", "calls": 0, "fail": 0, "in": 0, "out": 0}
+
 def extract(item):
     st, r = http("POST", "https://api.anthropic.com/v1/messages",
         {"model": "claude-haiku-4-5-20251001", "max_tokens": 400,
@@ -96,6 +98,12 @@ def extract(item):
              {"type": "image", "source": {"type": "url", "url": item["image"]}},
              {"type": "text", "text": PROMPT % (item.get("title") or "")[:120]}]}]},
         {"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01"}, timeout=90)
+    USAGE["calls"] += 1
+    if st == 200 and isinstance(r, dict) and isinstance(r.get("usage"), dict):
+        USAGE["in"] += r["usage"].get("input_tokens") or 0
+        USAGE["out"] += r["usage"].get("output_tokens") or 0
+    else:
+        USAGE["fail"] += 1
     if st != 200 or not isinstance(r, dict): return None
     for block in r.get("content", []):
         if block.get("type") == "tool_use":
@@ -124,6 +132,15 @@ def main():
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         list(ex.map(work, todo))
     print(f"DONE — {done[0]}/{len(todo)} items got attributes")
+    if todo:                                       # run record for the Nucleus costs tab
+        from datetime import datetime, timezone
+        uid = os.environ.get("ADMIN_UID", "72fc955c-3832-409e-ad43-622d2546e586")
+        now = datetime.now(timezone.utc)
+        st_r, _ = sb("POST", f"/storage/v1/object/wardrobe/{uid}/nucleus/runs/{now.strftime('%Y%m%dT%H%M%SZ')}-attrs.json",
+                     {"kind": "attrs", "at": now.isoformat(), "todo": len(todo), "stored": done[0],
+                      "gender": GENDER or "all", "ai": {"attrs_backfill": USAGE}},
+                     {"Content-Type": "application/json", "x-upsert": "true"})
+        print(f"run record: attrs (HTTP {st_r})")
 
 if __name__ == "__main__":
     main()

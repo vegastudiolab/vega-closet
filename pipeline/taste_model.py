@@ -9,6 +9,18 @@
 # Imported by conductor.py (extraction + scan-cap ranking) and build_feed_cloud.py (fit + rank).
 import json, math, random, urllib.request, urllib.error
 
+# ---- usage ledger: every Anthropic call records tokens + outcome here; the pipeline scripts
+# flush it into a per-run record for the Nucleus costs tab. Keyed by stage for cost attribution.
+USAGE = {}
+def _track(stage, model, status, resp):
+    u = USAGE.setdefault(stage, {"model": model, "calls": 0, "fail": 0, "in": 0, "out": 0})
+    u["calls"] += 1
+    if status == 200 and isinstance(resp, dict) and isinstance(resp.get("usage"), dict):
+        u["in"]  += resp["usage"].get("input_tokens") or 0
+        u["out"] += resp["usage"].get("output_tokens") or 0
+    else:
+        u["fail"] += 1
+
 # ---- stage-1 attribute schema (objective, user-agnostic) ----
 ATTR_TOOL = {
     "name": "record_attributes",
@@ -61,6 +73,7 @@ def extract_attrs(anthropic_key, image_url, title="", image_b64=None, media_type
              {"type": "text", "text": "Look at this fashion item (menswear or womenswear) and record its objective visual attributes. "
                                       "Judge only what you can see — no taste opinions. Title for context: " + (title or "")[:120]}]}]},
         {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01"})
+    _track("attrs", "claude-haiku-4-5-20251001", st, r)
     if st != 200 or not isinstance(r, dict): return None
     for block in r.get("content", []):
         if block.get("type") == "tool_use":
@@ -89,6 +102,7 @@ def make_brief_addendum(anthropic_key, uploads_by_bucket):
             "with weights implied by bucket semantics), and ASPIRATION vs BUY-NOW distinction. Plain text, "
             "<=180 words, no preamble.\n\n" + "\n\n".join(lines)}]},
         {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01"})
+    _track("briefs", "claude-sonnet-5", st, r)
     if st != 200 or not isinstance(r, dict): return None
     txt = "".join(b.get("text", "") for b in r.get("content", []) if b.get("type") == "text").strip()
     return txt or None
@@ -110,6 +124,7 @@ def vision_fit(anthropic_key, image_url, brief):
              {"type": "image", "source": {"type": "url", "url": image_url}},
              {"type": "text", "text": "Taste rubric:\n" + brief[:4000] + "\n\nScore this piece 0-1 against the rubric and tag why."}]}]},
         {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01"})
+    _track("stage2_vision", "claude-haiku-4-5-20251001", st, r)
     if st != 200 or not isinstance(r, dict): return None
     for block in r.get("content", []):
         if block.get("type") == "tool_use":
@@ -187,6 +202,23 @@ def brand_rates(sig_rows, prior_taps=8):
         l_, n_ = bstat.get((brand or "").lower(), (0, 0))
         return (l_ + prior_taps * base) / (n_ + prior_taps)
     return rate
+
+def write_run_record(sb_url, sb_key, kind, extra=None, admin_uid=None):
+    """Flush this process's usage ledger + run facts to the Nucleus runs folder (one object per
+    run — unique key, no concurrency games). Never raises: cost telemetry must not fail a run."""
+    import os
+    from datetime import datetime, timezone
+    try:
+        uid = admin_uid or os.environ.get("ADMIN_UID", "72fc955c-3832-409e-ad43-622d2546e586")
+        now = datetime.now(timezone.utc)
+        rec = {"kind": kind, "at": now.isoformat(), "ai": USAGE}
+        rec.update(extra or {})
+        path = f"{sb_url.rstrip('/')}/storage/v1/object/wardrobe/{uid}/nucleus/runs/{now.strftime('%Y%m%dT%H%M%SZ')}-{kind}.json"
+        st, r = _http("POST", path, rec,
+                      {"apikey": sb_key, "Authorization": "Bearer " + sb_key, "x-upsert": "true"})
+        print(f"  run record: {kind} (HTTP {st})")
+    except Exception as e:
+        print(f"  run record failed (continuing): {e}")
 
 def load_prior():
     """The house prior: de-personalized attribute weights (shipped in the repo). Lets a brand-new
