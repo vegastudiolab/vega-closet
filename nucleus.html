@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<title>trm · nucleus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  @font-face { font-family:'Minecraft'; src:url('fonts/Minecraft.ttf') format('truetype'); font-display:swap; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html { -webkit-text-size-adjust:100%; }
+  :root {
+    --bg:#0E0E0F; --panel:#151517; --ink:#ECEBE8; --dim:#8B8B86; --faint:#4A4A46;
+    --acc:#DEF65A; --warn:#E8C24A; --bad:#E86A4A;
+    --line:rgba(236,235,232,0.14); --line-soft:rgba(236,235,232,0.07);
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  body { font-family:var(--mono); background:var(--bg); color:var(--ink); font-size:12px;
+         padding:20px 16px 80px; max-width:1080px; margin:0 auto; }
+  a { color:var(--ink); }
+  .logo { font-family:'Minecraft',var(--mono); font-size:30px; line-height:0.9; letter-spacing:0.02em; }
+  .logo em { font-style:normal; color:var(--acc); }
+  .head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+  .head .meta { font-size:9px; letter-spacing:0.22em; text-transform:uppercase; color:var(--dim); text-align:right; }
+  .head button { font-family:var(--mono); font-size:9px; letter-spacing:0.18em; text-transform:uppercase;
+                 background:transparent; color:var(--ink); border:1px solid var(--line); padding:5px 12px; cursor:pointer; }
+  .head button:hover { background:var(--ink); color:var(--bg); }
+  .gate { padding:80px 0; text-align:center; color:var(--dim); font-size:11px; letter-spacing:0.08em; }
+  .gate a { color:var(--acc); }
+  h2 { font-size:9px; letter-spacing:0.26em; text-transform:uppercase; color:var(--dim);
+       margin:26px 0 10px; display:flex; align-items:center; gap:8px; }
+  h2::after { content:''; flex:1; border-top:1px solid var(--line-soft); }
+  .pulse { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .stat { border:1px solid var(--line-soft); background:var(--panel); padding:12px 12px 10px; }
+  .stat b { display:block; font-size:26px; font-weight:500; line-height:1; margin-bottom:6px; }
+  .stat span { font-size:8.5px; letter-spacing:0.18em; text-transform:uppercase; color:var(--dim); }
+  .stat small { display:block; font-size:9.5px; color:var(--dim); margin-top:4px; }
+  .stat.acc b { color:var(--acc); } .stat.warn b { color:var(--warn); } .stat.bad b { color:var(--bad); }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  th { font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--dim); font-weight:400;
+       text-align:right; padding:6px 8px; border-bottom:1px solid var(--line); cursor:pointer; white-space:nowrap; user-select:none; }
+  th:first-child, td:first-child { text-align:left; }
+  th.on { color:var(--acc); }
+  td { padding:5px 8px; border-bottom:1px solid var(--line-soft); text-align:right; white-space:nowrap; }
+  td:first-child { color:var(--ink); }
+  tr.low td { color:var(--warn); }
+  td .bar { display:inline-block; height:7px; background:var(--acc); opacity:0.85; vertical-align:middle; }
+  .dim { color:var(--dim); } .scroll { max-height:420px; overflow-y:auto; border:1px solid var(--line-soft); }
+  .funnel .row { display:grid; grid-template-columns:110px 1fr 46px; gap:10px; align-items:center; margin:5px 0; }
+  .funnel .lbl { font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:var(--dim); }
+  .funnel .trk { background:var(--panel); border:1px solid var(--line-soft); height:14px; }
+  .funnel .fill { height:100%; background:var(--acc); opacity:0.9; }
+  .funnel .n { font-size:11px; text-align:right; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { border:1px solid var(--line-soft); background:var(--panel); padding:4px 9px; font-size:10px; }
+  .chip b { color:var(--acc); font-weight:500; margin-left:5px; }
+  .days { display:flex; align-items:flex-end; gap:3px; height:56px; margin-top:10px; }
+  .days .d { flex:1; background:var(--acc); opacity:0.75; min-height:2px; position:relative; }
+  .days .d i { position:absolute; bottom:-16px; left:50%; transform:translateX(-50%) rotate(0);
+               font-style:normal; font-size:7.5px; color:var(--faint); }
+  .spark { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px; }
+  .spark .sp { border:1px solid var(--line-soft); background:var(--panel); padding:10px 12px; }
+  .spark .sp span { font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--dim); }
+  .spark svg { display:block; width:100%; height:36px; margin-top:6px; }
+  .spark polyline { fill:none; stroke:var(--acc); stroke-width:1.5; }
+  input[type=search] { font-family:var(--mono); font-size:11px; background:var(--panel); color:var(--ink);
+                       border:1px solid var(--line); padding:5px 10px; width:200px; margin-bottom:8px; }
+  input[type=search]:focus { outline:none; border-color:var(--acc); }
+  @media (max-width:640px){ body{padding:14px 10px 60px} .stat b{font-size:21px} }
+</style>
+</head>
+<body>
+<div class="head">
+  <div class="logo">nucle<em>us</em></div>
+  <div class="meta">
+    <div id="built">—</div>
+    <button id="refresh" style="margin-top:6px">refresh</button>
+  </div>
+</div>
+<div id="root"><div class="gate">loading…</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://opmbwwodxlqktedxuppd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_ZH2HPeburUJ0jyARX5Yhyg_j0xbYX25';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = (n) => n == null ? '—' : Number(n).toLocaleString('en-US');
+const pct = (n) => n == null ? '—' : Math.round(n * 100) + '%';
+const age = (iso) => { if (!iso) return '—'; const h = (Date.now() - new Date(iso)) / 36e5;
+  return h < 1.5 ? Math.round(h * 60) + 'm' : h < 48 ? Math.round(h) + 'h' : Math.round(h / 24) + 'd'; };
+
+let DATA = null, brandSort = { k:'items', dir:-1 };
+
+function render(d) {
+  DATA = d;
+  $('#built').textContent = 'built ' + age(d.built_at) + ' ago · ' + new Date(d.built_at).toLocaleString();
+  const p = d.pulse || {}, f = d.funnel || {}, c = d.catalog || {};
+  const starvedCls = p.feeds_starved > 0 ? 'bad' : 'acc';
+  const activeCls = p.active_7d <= Math.max(1, Math.round(p.users_total * 0.1)) ? 'warn' : 'acc';
+  let h = '';
+
+  h += `<h2>pulse</h2><div class="pulse">
+    <div class="stat acc"><b>${fmt(p.users_total)}</b><span>users</span><small>${fmt(p.users_tapped)} have tapped</small></div>
+    <div class="stat ${activeCls}"><b>${fmt(p.active_7d)}</b><span>active · 7d</span><small>${fmt(p.active_1d)} today · ${fmt(p.new_activations_7d)} new</small></div>
+    <div class="stat"><b>${fmt(p.taps_7d)}</b><span>taps · 7d</span><small>${fmt(p.likes_7d)} likes · ${fmt(p.carts_7d)} carts · ${fmt(p.taps_total)} all-time</small></div>
+    <div class="stat"><b>${p.like_rate_7d == null ? '—' : pct(p.like_rate_7d)}</b><span>like rate · 7d</span></div>
+    <div class="stat"><b>${fmt(p.catalog_total)}</b><span>catalog</span><small>+${fmt(p.catalog_new_1d)} today · +${fmt(p.catalog_new_7d)} 7d</small></div>
+    <div class="stat ${starvedCls}"><b>${fmt(p.feeds_starved)}</b><span>starved feeds</span><small>median live ${fmt(p.feed_live_median)}</small></div>
+  </div>`;
+
+  const hist = d.history || [];
+  if (hist.length >= 2) {
+    const sp = (key) => {
+      const vs = hist.map(x => x[key] ?? 0), mx = Math.max(...vs, 1), mn = Math.min(...vs);
+      const pts = vs.map((v, i) => `${(i / (vs.length - 1)) * 100},${34 - ((v - mn) / (mx - mn || 1)) * 30}`).join(' ');
+      return `<svg viewBox="0 0 100 36" preserveAspectRatio="none"><polyline points="${pts}"/></svg>`;
+    };
+    h += `<h2>trends · ${hist.length}d</h2><div class="spark">
+      <div class="sp"><span>users</span>${sp('users')}</div>
+      <div class="sp"><span>taps / 7d</span>${sp('taps7')}</div>
+      <div class="sp"><span>catalog</span>${sp('cat')}</div>
+      <div class="sp"><span>median live feed</span>${sp('median_live')}</div>
+    </div>`;
+  }
+
+  const steps = [['signed up','signed_up'],['gender set','gender_set'],['sizes set','sizes_set'],
+                 ['deck done','deck_done'],['brief built','brief_built'],['10+ taps','tapped_10'],['100+ taps','tapped_100']];
+  const base = f.signed_up || 1;
+  h += `<h2>onboarding funnel</h2><div class="funnel">` + steps.map(([l, k]) =>
+    `<div class="row"><div class="lbl">${l}</div><div class="trk"><div class="fill" style="width:${(f[k] || 0) / base * 100}%"></div></div><div class="n">${fmt(f[k])}</div></div>`
+  ).join('') + `</div>`;
+
+  const users = d.users || [];
+  h += `<h2>feed health · ${users.length} users</h2><div class="scroll"><table><thead><tr>
+    <th>user</th><th>gender</th><th>brands</th><th>taps</th><th>live</th><th>liked</th><th>dismissed</th><th>built</th>
+    </tr></thead><tbody>` + users.map(u =>
+    `<tr class="${u.live < 25 ? 'low' : ''}"><td>${esc(u.uid)}</td><td class="dim">${esc(u.gender)}</td>
+     <td>${fmt(u.brands)}</td><td>${fmt(u.taps)}</td><td>${fmt(u.live)}</td><td>${fmt(u.liked)}</td>
+     <td class="dim">${fmt(u.dismissed)}</td><td class="dim">${age(u.built_at)}</td></tr>`
+  ).join('') + `</tbody></table></div>`;
+
+  h += `<h2>brands · supply × demand</h2>
+    <input type="search" id="bq" placeholder="filter brands…" />
+    <div class="scroll"><table id="btab"><thead><tr>
+      <th data-k="brand">brand</th><th data-k="items">items</th><th data-k="new_7d">new 7d</th>
+      <th data-k="likes">likes</th><th data-k="passes">passes</th><th data-k="like_rate">like rate</th><th data-k="walls">walls</th>
+    </tr></thead><tbody></tbody></table></div>`;
+
+  h += `<h2>catalog</h2><div class="chips">`
+    + Object.entries(c.by_platform || {}).map(([k, v]) => `<div class="chip">${esc(k)}<b>${fmt(v)}</b></div>`).join('')
+    + Object.entries(c.by_gender || {}).map(([k, v]) => `<div class="chip">${esc(k)}<b>${fmt(v)}</b></div>`).join('')
+    + Object.entries(c.by_category || {}).map(([k, v]) => `<div class="chip">${esc(k)}<b>${fmt(v)}</b></div>`).join('')
+    + `<div class="chip">attrs missing<b>${fmt(c.attrs_missing)}</b></div>`
+    + `<div class="chip">attrs missing · men<b>${fmt(c.attrs_missing_men)}</b></div></div>`;
+  const days = Object.entries(c.added_by_day || {});
+  if (days.length) {
+    const mx = Math.max(...days.map(([, v]) => v), 1);
+    h += `<div class="days">` + days.map(([k, v]) =>
+      `<div class="d" style="height:${Math.max(4, v / mx * 100)}%" title="${k}: ${v}"><i>${k.slice(5)}</i></div>`).join('') + `</div>`;
+  }
+
+  $('#root').innerHTML = h;
+  drawBrands();
+  $('#bq').addEventListener('input', drawBrands);
+  document.querySelectorAll('#btab th').forEach(th => th.addEventListener('click', () => {
+    const k = th.dataset.k;
+    brandSort = { k, dir: brandSort.k === k ? -brandSort.dir : (k === 'brand' ? 1 : -1) };
+    drawBrands();
+  }));
+}
+
+function drawBrands() {
+  const q = ($('#bq')?.value || '').toLowerCase();
+  const rows = (DATA.brands || []).filter(b => !q || b.brand.toLowerCase().includes(q));
+  const { k, dir } = brandSort;
+  rows.sort((a, b) => (a[k] == null ? -1 : b[k] == null ? 1 : a[k] > b[k] ? 1 : -1) * dir);
+  const mx = Math.max(...rows.map(b => b.items), 1);
+  document.querySelectorAll('#btab th').forEach(th => th.classList.toggle('on', th.dataset.k === k));
+  document.querySelector('#btab tbody').innerHTML = rows.map(b =>
+    `<tr><td>${esc(b.brand)}</td>
+     <td>${fmt(b.items)} <span class="bar" style="width:${Math.max(2, b.items / mx * 60)}px"></span></td>
+     <td>${b.new_7d ? '+' + fmt(b.new_7d) : '<span class=dim>—</span>'}</td>
+     <td>${fmt(b.likes)}</td><td class="dim">${fmt(b.passes)}</td>
+     <td>${b.like_rate == null ? '<span class=dim>—</span>' : pct(b.like_rate)}</td>
+     <td>${b.walls ? fmt(b.walls) : '<span class=dim>—</span>'}</td></tr>`).join('');
+}
+
+async function load() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    $('#root').innerHTML = `<div class="gate">not signed in — open <a href="./">trm</a>, sign in, then come back.</div>`;
+    return;
+  }
+  const { data, error } = await sb.storage.from('wardrobe').download(`${session.user.id}/nucleus/nucleus.json`);
+  if (error || !data) {
+    $('#root').innerHTML = `<div class="gate">nothing here.</div>`;
+    return;
+  }
+  render(JSON.parse(await data.text()));
+}
+$('#refresh').addEventListener('click', load);
+window.__nucleusRender = render;   // dev hook: inject a payload to preview without a session
+load();
+</script>
+</body>
+</html>
