@@ -43,7 +43,10 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 90, not 30: the full 3-source scan alone can run ~35 min through the stealth proxy, and this
+    # job also carries the rebuild + nucleus steps. At 30 the timeout killed every scheduled scan
+    # Aug 5-10 BEFORE the catalog insert — scraping spent, zero items stored.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
