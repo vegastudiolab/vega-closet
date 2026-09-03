@@ -5,12 +5,14 @@
 # and folds lasting patterns back into their taste. Config from env (Actions) or .env.
 import os, sys, re, json, urllib.request, urllib.error
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 import taste_model
 
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 STAGE2_TOP = 60          # personal vision re-ranks only the slice that reaches the top of the feed
 STAGE2_TOP_YOUNG = 90    # young models (<MATURE_TAPS) lean harder on the rubric: wider slice, stronger nudge
+STAGE2_MAX_FRESH = 400   # ACTIVE users: whole in-wall pool gets judged, this many fresh verdicts per rebuild (~$1.30 cap)
+ACTIVE_DAYS = 14         # tapped within this window -> active (dormant users keep the small slice)
 MATURE_TAPS = 300        # above this, the user's own fitted weights carry; below, prior + vision carry more
 PRIOR = taste_model.load_prior()
 
@@ -108,7 +110,7 @@ GEM_OVERRIDE   = 0.85  # anything scoring this high always shows, from any brand
 PRIOR_TAPS     = 8     # bayesian smoothing anchor so small samples don't over-trigger
 
 def build_for_user(uid, taste, catalog):
-    sigs = fetch_all("signals", "url,action,brand,category,reasons,price", f"&user_id=eq.{uid}")
+    sigs = fetch_all("signals", "url,action,brand,category,reasons,price,created_at", f"&user_id=eq.{uid}")
     liked_ids, passed_ids, carted_ids = set(), set(), set()
     liked_brands, passed_brands = Counter(), Counter()
     liked_tags, passed_tags = Counter(), Counter()
@@ -224,10 +226,17 @@ def build_for_user(uid, taste, catalog):
             print("  brief-from-taps failed (continuing):", e)
 
     # ---- stage 1: fit THIS user's taste weights over the shared item attributes ----
+    ugender = norm(taste.get("gender")) or "men"
     labeled = []
     for x in sigs:
         c0 = cat_by_url.get(x["url"])
         if c0 and c0.get("attrs"):
+            # signal hygiene: a pass on a wrong-gender / wrong-department item was about the ITEM,
+            # not the style — it must not teach the style model (audit 2026-09-03: 4% of passes)
+            if x["action"] not in ("liked", "carted") and (
+                (norm(c0.get("gender")) or "men") != ugender
+                or (ugender == "men" and c0.get("category") in ("dresses", "skirts"))):
+                continue
             if "deck" in (x.get("reasons") or []):
                 # onboarding deck hid brand + price — those features would learn noise
                 c0 = dict(c0); c0["price"] = None; c0["brand"] = ""
@@ -262,12 +271,7 @@ def build_for_user(uid, taste, catalog):
             if liked_tags.get(rn):  s += min(0.05 * liked_tags[rn], 0.25)
             if passed_tags.get(rn): s -= min(0.05 * passed_tags[rn], 0.25)
         if soft and isinstance(it.get("price"), (int, float)) and it["price"] > soft * 1.5: s -= 0.06
-        # seasonal nudge (summer/spring): heavy winterwear steps back, LA-weight layers step up.
-        # small on purpose — a grail shearling still surfaces, it just doesn't dominate July.
-        if _SEASON in ("summer", "spring"):
-            t = (it.get("title") or "") + " " + " ".join(it.get("reasons") or [])
-            if _HEAVY.search(t): s -= 0.08
-            elif _LIGHT.search(t): s += 0.04
+        # no seasonal nudge: Charles shops every season year-round (2026-09-03); taste only.
         return round(s, 4)
 
     # THE hard promise: nothing that doesn't fit THIS user ever reaches their feed. Sizes are data
@@ -373,8 +377,15 @@ def build_for_user(uid, taste, catalog):
                  fetch_all("user_scores", "url,vfit,tags", f"&user_id=eq.{uid}")}
         unacted = [it for it in items if not it["isArchived"] and not it["isLiked"] and "unrated" not in (it.get("reasons") or [])]
         unacted.sort(key=lambda x: -x["score"])
-        top = unacted[:STAGE2_TOP_YOUNG if young else STAGE2_TOP]
-        todo = [it for it in top if it["url"] not in cache]
+        # active users: the WHOLE in-wall pool gets judged (holdout AUC: vision 0.72 vs stage-1 0.65;
+        # verdicts cache forever) — bounded per rebuild by STAGE2_MAX_FRESH, best stage-1 first.
+        # dormant users keep the small slice so cost stays flat across the user base.
+        since = (datetime.now(timezone.utc) - timedelta(days=ACTIVE_DAYS)).isoformat()
+        active_user = any((x.get("created_at") or "") >= since for x in sigs)
+        fresh_pool = [it for it in unacted if it["url"] not in cache]
+        todo = fresh_pool[:STAGE2_MAX_FRESH] if active_user else fresh_pool[:(STAGE2_TOP_YOUNG if young else STAGE2_TOP)]
+        todo_urls = {it["url"] for it in todo}
+        top = [it for it in unacted if it["url"] in cache or it["url"] in todo_urls]   # every cached verdict applies, free
         fresh = {}
         if todo:
             from concurrent.futures import ThreadPoolExecutor
@@ -389,7 +400,7 @@ def build_for_user(uid, taste, catalog):
                 rows_up = [{"user_id": uid, "url": u, "vfit": round(v, 3), "tags": t} for u, (v, t) in fresh.items()]
                 api("POST", "/rest/v1/user_scores?on_conflict=user_id,url", rows_up,
                     {"Prefer": "resolution=merge-duplicates,return=minimal"})
-        vnudge = 0.6 if young else 0.35            # the rubric carries a young model's ranking
+        vnudge = 0.6                                # vision leads once it has looked (backtest: 0.72 vs 0.65)
         for it in top:
             got = fresh.get(it["url"]) or cache.get(it["url"])
             if not got or got[0] is None: continue
@@ -407,13 +418,55 @@ def build_for_user(uid, taste, catalog):
         return {"id":it.get("id"),"platform":it.get("platform"),"brand":it.get("brand"),"title":it.get("title"),
                 "category":it.get("category"),"price":it.get("price"),"size":it.get("size"),"condition":it.get("condition"),
                 "image":it.get("image"),"url":it.get("url"),"reasons":it.get("reasons") or [],"score":it["score"],
-                "sz":it.get("sz"),"isArchived":it["isArchived"],"isLiked":it["isLiked"],"isCarted":it.get("isCarted",False),"isNew":it["isNew"]}
+                "sz":it.get("sz"),"isArchived":it["isArchived"],"isLiked":it["isLiked"],"isCarted":it.get("isCarted",False),"isNew":it["isNew"],
+                "similar":it.get("similar",0),"pick":bool(it.get("pick"))}
+    # ---- assembly (audit 2026-09-03): dedupe -> taste-first order with diversity -> picks ----
+    # 1) collapse same brand+title+category listings: 18% of the feed was the same piece in other
+    #    sizes/conditions. Best-scored survives and carries `similar` = how many it stands for.
+    n_dupes = 0
+    groups = {}
+    for it in items:
+        if it["isArchived"] or it["isLiked"]: continue
+        groups.setdefault((norm(it.get("brand")), norm(it.get("title")), it.get("category")), []).append(it)
+    drop = set()
+    for g in groups.values():
+        if len(g) < 2: continue
+        g.sort(key=lambda x: -x["score"])
+        g[0]["similar"] = len(g) - 1
+        for d in g[1:]: drop.add(d["url"]); n_dupes += 1
+    items = [it for it in items if it["url"] not in drop]
+    # 2) order by TASTE, not arrival (was: newest day first, score only broke ties). Greedy
+    #    diversity: every repeat of a brand / look-cluster / source already placed costs a little,
+    #    so the head of the feed spans the whole taste instead of one black-boxy-nylon cluster.
+    def _cluster(it):
+        a = it.get("attrs") or {}
+        pal, mood = a.get("palette"), a.get("mood")
+        return (a.get("silhouette"), pal[0] if isinstance(pal, list) and pal else pal,
+                mood[0] if isinstance(mood, list) and mood else mood)
+    def diversify(lst, head=150):
+        pool = sorted(lst, key=lambda x: -x["score"]); out = []
+        seen_b, seen_c, seen_s = Counter(), Counter(), Counter()
+        while pool and len(out) < head:
+            best, bi = None, -1
+            for i, it in enumerate(pool):
+                eff = (it["score"] - 0.05 * seen_b[norm(it.get("brand"))]
+                       - 0.03 * seen_c[_cluster(it)] - 0.01 * seen_s[it.get("platform")])
+                if best is None or eff > best: best, bi = eff, i
+            it = pool.pop(bi); out.append(it)
+            seen_b[norm(it.get("brand"))] += 1; seen_c[_cluster(it)] += 1; seen_s[it.get("platform")] += 1
+        return out + pool
+    ordered = {}
+    for key, _t, _s in sections_for(ugender):
+        ordered[key] = diversify([i for i in items if i.get("category") == key and not i["isArchived"] and not i["isLiked"]])
+    # 3) picks: the 40 strongest cards from the diversified heads, across categories
+    heads = [it for lst in ordered.values() for it in lst[:50]]
+    for it in sorted(heads, key=lambda x: -x["score"])[:40]: it["pick"] = True
     secout = []
     for key, title, sub in sections_for(ugender):
         cat = [it for it in items if it.get("category") == key]
-        act = sorted([i for i in cat if not i["isArchived"]], key=lambda x: (x.get("firstSeen",""), x.get("score",0)), reverse=True)
+        lik = sorted([i for i in cat if i["isLiked"] and not i["isArchived"]], key=lambda x: -x["score"])
         arc = sorted([i for i in cat if i["isArchived"]], key=lambda x: -x.get("score",0))
-        secout.append({"key":key,"title":title,"subtitle":sub,"items":[ri(i) for i in act+arc]})
+        secout.append({"key":key,"title":title,"subtitle":sub,"items":[ri(i) for i in ordered[key]+lik+arc]})
     active = [it for it in items if not it["isArchived"]]
     total = sum(1 for it in active if not it["isLiked"])
     n_liked = sum(1 for it in active if it["isLiked"]); n_arch = sum(1 for it in items if it["isArchived"])
@@ -450,7 +503,7 @@ def build_for_user(uid, taste, catalog):
     api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
     print(f"  user {uid[:8]}: {total} to review, {n_liked} liked, {n_arch} archived | "
           f"stage-2 vision on {n_stage2} top items | {n_gated_out} gated out across {len(gated)} combos, "
-          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall (gems kept) | {n_size_retired} size-retired"
+          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall (gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed"
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():
