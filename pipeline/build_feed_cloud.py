@@ -445,15 +445,17 @@ def build_for_user(uid, taste, catalog):
                 mood[0] if isinstance(mood, list) and mood else mood)
     def diversify(lst, head=150):
         pool = sorted(lst, key=lambda x: -x["score"]); out = []
-        seen_b, seen_c, seen_s = Counter(), Counter(), Counter()
+        seen_b, seen_c, seen_s, seen_p = Counter(), Counter(), Counter(), Counter()
         while pool and len(out) < head:
             best, bi = None, -1
             for i, it in enumerate(pool):
                 eff = (it["score"] - 0.05 * seen_b[norm(it.get("brand"))]
-                       - 0.03 * seen_c[_cluster(it)] - 0.01 * seen_s[it.get("platform")])
+                       - 0.03 * seen_c[_cluster(it)] - 0.01 * seen_s[it.get("platform")]
+                       - 0.015 * seen_p[_cluster(it)[1]])          # palette repeats: head drifted to 70% black vs 51% of likes
                 if best is None or eff > best: best, bi = eff, i
             it = pool.pop(bi); out.append(it)
-            seen_b[norm(it.get("brand"))] += 1; seen_c[_cluster(it)] += 1; seen_s[it.get("platform")] += 1
+            seen_b[norm(it.get("brand"))] += 1; seen_c[_cluster(it)] += 1
+            seen_s[it.get("platform")] += 1; seen_p[_cluster(it)[1]] += 1
         return out + pool
     ordered = {}
     for key, _t, _s in sections_for(ugender):
