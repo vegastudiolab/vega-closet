@@ -897,12 +897,13 @@
       const flag = it.flag ? `<div class="flag">${esc(it.flag)}</div>` : "";
       const sizePill = it.size ? `<span class="pill sz">size ${esc(it.size)}</span>` : "";
       const condPill = it.condition ? `<span class="pill">${esc(it.condition)}</span>` : "";
+      const simPill  = it.similar ? `<span class="pill">+${Number(it.similar)} more listed</span>` : "";   // dupes collapsed by the builder
       const why = (it.reasons||[]).slice(0,4).map(r=>`<span class="w">${esc(r)}</span>`).join("");
       const initial = esc((it.brand||"?").charAt(0));
       const img = safeUrl(it.image), href = safeUrl(it.url);
       const plat = esc(platLabel[it.platform]||it.platform);
       const searchText = esc(((it.brand||"")+" "+(it.title||"")+" "+((it.reasons||[]).join(" "))).toLowerCase());
-      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}" data-carted="${it.isCarted?1:0}" data-search="${searchText}">
+      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}" data-carted="${it.isCarted?1:0}" data-pick="${it.pick?1:0}" data-search="${searchText}">
         <div class="imgwrap">
           ${badge}
           <img src="${img}" alt="${esc(it.title)}" loading="lazy" referrerpolicy="no-referrer" decoding="async"
@@ -914,7 +915,7 @@
           <div class="ey">${esc(it.brand)} · ${plat}</div>
           <div class="ttl">${esc(it.title)}</div>
           <div class="price"><span class="now">${money(it.price)}</span>${was}${off}</div>
-          <div class="meta">${sizePill}${condPill}<span class="pill">${esc(it.category)}</span></div>
+          <div class="meta">${sizePill}${condPill}${simPill}<span class="pill">${esc(it.category)}</span></div>
           <div class="why">${why}</div>
           <div class="acts">
             <button class="act like" data-act="like" type="button">♥<span class="alab"> love</span></button>
@@ -941,7 +942,7 @@
     const VIEW = { status:"feed", cat:"all", sz:"all", price:"all", plat:"all", sort:"default" };
     let SEARCH_Q = "";
     const cards = () => [...document.querySelectorAll(".card")];
-    const STAT  = [["feed","feed"],["liked","liked"],["cart","cart"],["archived","archived"],["all","all"]];
+    const STAT  = [["feed","feed"],["picks","picks"],["liked","liked"],["cart","cart"],["archived","archived"],["all","all"]];
     const CATS  = [["all","all"],["outerwear","outerwear"],["tops","tops"],["pants","bottoms"],["shoes","footwear"],["accessories","accessories"]];
     const PLATS = [["all","all"],["grailed","grailed"],["the realreal","therealreal"],["ssense","ssense"]];
     const PRICES= [["all","all"],["under $200","0-200"],["$200–500","200-500"],["$500–1k","500-1000"],["$1k+","1000-"]];
@@ -949,6 +950,7 @@
     const szSeen = new Set(cards().map(c=>c.dataset.sz));
     const SIZES = [["all","all"],["L","L"],["XL","XL"],["XXL","XXL"],["w 36","w36"],["w 38","w38"],["us 14","us14"],["us 15","us15"],["eu 46-48","eu46-48"],["one size","os"],["us 13","us13"],["eu 47-49","eu47-49"]].filter(([l,v])=>v==="all"||szSeen.has(v));
     function statusMatch(c,s){
+      if (s==="picks")    return c.dataset.pick==="1" && statusMatch(c,"feed");   // the 40 strongest cards, still un-acted
       if (s==="liked")    return c.dataset.liked==="1" && c.dataset.carted!=="1";
       if (s==="cart")     return c.dataset.carted==="1";
       if (s==="archived") return c.dataset.archived==="1";
@@ -1033,6 +1035,7 @@
         if (shown===0){ em.style.display="block";
           em.textContent = q ? "no results for \""+SEARCH_Q+"\". try a different search."
                          : VIEW.status==="feed"     ? "you're all caught up. tap scan now for fresh pieces, or 'all' to browse everything you've saved."
+                         : VIEW.status==="picks"    ? "no picks yet — they land with the next rebuild."
                          : VIEW.status==="liked"    ? "nothing loved here yet."
                          : VIEW.status==="archived" ? "nothing passed here yet." : "nothing here yet."; }
         else em.style.display="none";
