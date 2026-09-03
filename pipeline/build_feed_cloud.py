@@ -458,9 +458,17 @@ def build_for_user(uid, taste, catalog):
     ordered = {}
     for key, _t, _s in sections_for(ugender):
         ordered[key] = diversify([i for i in items if i.get("category") == key and not i["isArchived"] and not i["isLiked"]])
-    # 3) picks: the 40 strongest cards from the diversified heads, across categories
-    heads = [it for lst in ordered.values() for it in lst[:50]]
-    for it in sorted(heads, key=lambda x: -x["score"])[:40]: it["pick"] = True
+    # 3) picks: 40 cards spread across categories — each section gets a share proportional to its
+    #    pool (floor 5 when it has items), filled from its diversified head. Scores aren't comparable
+    #    across categories (outerwear runs hot), so a global top-40 was 70% jackets.
+    PICKS = 40
+    sizes = {k: len(v) for k, v in ordered.items() if v}
+    tot_live = sum(sizes.values()) or 1
+    quota = {k: max(5, round(PICKS * n / tot_live)) for k, n in sizes.items()}
+    while sum(quota.values()) > PICKS:                     # trim the biggest section until it fits
+        k = max(quota, key=quota.get); quota[k] -= 1
+    for k, q in quota.items():
+        for it in ordered[k][:min(q, sizes[k])]: it["pick"] = True
     secout = []
     for key, title, sub in sections_for(ugender):
         cat = [it for it in items if it.get("category") == key]
