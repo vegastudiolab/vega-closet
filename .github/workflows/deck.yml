@@ -9,6 +9,10 @@ concurrency:
   group: trm-deck
   cancel-in-progress: false
 
+permissions:
+  contents: write        # the job commits the rotated deck back to main; without this the
+                         # default GITHUB_TOKEN is read-only and `git push` 403s (silent since Jul 20)
+
 jobs:
   run:
     runs-on: ubuntu-latest
