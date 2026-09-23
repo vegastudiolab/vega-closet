@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import conductor as C                    # env loading, http/sb, Firecrawl gate + counters, _trr_json, mark_sold
 import taste_model
 
-RECHECK_MAX = int(os.environ.get("RECHECK_MAX", "3000"))   # ~100 Firecrawl calls a night; scans use ~100 a day
+RECHECK_MAX = int(os.environ.get("RECHECK_MAX", "4500"))   # ~150 Firecrawl calls a night (Nucleus costs tab tracks them)
+REQUESTER = os.environ.get("REBUILD_USER", "").strip()     # set by the conductor on a manual scan: their feed is verified first
 BATCH = 30
 DRY = os.environ.get("DRY", "") == "1"
 TODAY = C.TODAY
@@ -23,13 +24,14 @@ def gql(query):
         st, r = C.http("POST", "https://api.firecrawl.dev/v2/scrape", {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
                        {"Authorization": "Bearer " + C.FIRE}, timeout=180)
     data = (r.get("data") or {}) if isinstance(r, dict) else {}
-    if (data.get("metadata") or {}).get("statusCode") != 200: return None
-    return C._trr_json(re.sub(r"<[^>]+>", "", data.get("rawHtml") or ""))
+    sc = (data.get("metadata") or {}).get("statusCode")
+    if sc != 200: return None, f"firecrawl {st} / page {sc}"
+    return C._trr_json(re.sub(r"<[^>]+>", "", data.get("rawHtml") or "")), None
 
 def main():
     t0 = time.time()
     # 1) every TRR listing live in any feed, with its best (lowest) position across users
-    pos = {}
+    pos, mine = {}, set()
     st, feeds = C.sb("GET", "/rest/v1/feeds?select=user_id&order=user_id")
     for row in (feeds if isinstance(feeds, list) else []):
         st1, one = C.sb("GET", f"/rest/v1/feeds?select=payload&user_id=eq.{row['user_id']}")
@@ -39,6 +41,7 @@ def main():
             for idx, it in enumerate(live):
                 if it.get("platform") == "therealreal" and it.get("url"):
                     pos[it["url"]] = min(pos.get(it["url"], 10**9), idx)
+                    if row["user_id"] == REQUESTER: mine.add(it["url"])
     # 2) catalog state for those urls: skip ones already marked sold; sort heads first, then least recently verified
     urls = list(pos); rows = {}
     for i in range(0, len(urls), 100):
@@ -46,15 +49,16 @@ def main():
         st, part = C.sb("GET", "/rest/v1/catalog?select=url,last_seen,reasons&url=in.(" + ",".join(urllib.parse.quote(u, safe="") for u in chunk) + ")")
         for r in (part if isinstance(part, list) else []): rows[r["url"]] = r
     cands = [u for u in urls if u in rows and "sold" not in (rows[u].get("reasons") or [])]
-    # budget split: feed heads (top 150 anywhere) get 60%, rotating by least-recently-verified so a
-    # head verified last night yields to one that wasn't; the deep pool gets the rest the same way.
+    # budget split: feed heads (top 150 anywhere) get 60%, the deep pool the rest. The requester's
+    # own feed comes first; then heads by POSITION (everyone's top-of-feed before anyone's depth),
+    # and within a position the least-recently-verified; the deep pool rotates by verification date.
     seen = lambda u: rows[u].get("last_seen") or ""
-    heads = sorted([u for u in cands if pos[u] < 150], key=lambda u: (seen(u), pos[u]))
-    deep  = sorted([u for u in cands if pos[u] >= 150], key=seen)
+    heads = sorted([u for u in cands if pos[u] < 150], key=lambda u: (0 if u in mine else 1, pos[u], seen(u)))
+    deep  = sorted([u for u in cands if pos[u] >= 150], key=lambda u: (0 if u in mine else 1, seen(u)))
     n_head = min(len(heads), int(RECHECK_MAX * 0.6)) if deep else min(len(heads), RECHECK_MAX)
     todo = heads[:n_head] + deep[:RECHECK_MAX - n_head]
     print(f"recheck: {len(urls)} TRR listings live across feeds, {len(cands)} not yet marked sold, checking {len(todo)} "
-          f"({sum(1 for u in todo if pos[u] < 150)} in feed heads) in {-(-len(todo) // BATCH)} calls")
+          f"({sum(1 for u in todo if pos[u] < 150)} in feed heads, {sum(1 for u in todo if u in mine)} in the requester's feed) in {-(-len(todo) // BATCH)} calls")
     if DRY or not todo:
         print("dry run — no calls made" if DRY else "nothing to check"); return
     # 3) aliased batches
@@ -62,8 +66,11 @@ def main():
     def check(batch):
         slugs = [(u, u.rstrip("/").rsplit("/", 1)[-1]) for u in batch]
         q = "query{" + " ".join(f'p{i}: product(slug:"{sl}"){{availability}}' for i, (u, sl) in enumerate(slugs)) + "}"
-        j = gql(q)
-        if not j or not isinstance(j.get("data"), dict): return None
+        j, why = gql(q)
+        if not j or not isinstance(j.get("data"), dict):
+            time.sleep(4); j, why = gql(q)                                   # one retry: proxy hiccups are common
+            if not j or not isinstance(j.get("data"), dict):
+                print(f"  batch failed: {why or 'no data in response'}"); return None
         out = []
         for i, (u, sl) in enumerate(slugs):
             v = j["data"].get(f"p{i}")
