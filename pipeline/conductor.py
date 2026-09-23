@@ -488,34 +488,34 @@ def scrape_ssense(brands, loved_raw, existing=None, per_brand=6, gender="men"):
     seg = "women" if gender == "women" else "men"
     def _brand(b):                                                # one brand: listing + per-product size pages
         res = []
-            slug = re.sub(r"[^a-z0-9]+","-",norm(b)).strip("-")
-            data = firecrawl_scrape(f"https://www.ssense.com/en-us/{seg}/designers/{slug}", LIST, proxy="stealth", wait=12000)
-            prods = (data or {}).get("products") or []
-            fresh = 0
-            for p in prods:
-                if fresh >= per_brand: break
-                title = p.get("name",""); cat = infer_cat(title)
-                if cat not in ALLOWED_CATS: continue
-                if CATEGORY and cat != CATEGORY: continue             # category scan: skip before the pricey product-page scrape
-                purl = (p.get("url") or "").split("?")[0]
-                if not purl: continue
-                if purl in existing: continue                         # already cataloged: the per-product stealth scrape was the credit leak
-                fresh += 1
-                szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000, return_meta=True) or {}   # json (sizes) + metadata (og:image)
-                sizes = " ".join((szdata.get("json") or {}).get("sizesAvailable") or [])
-                if not in_size(cat, sizes, b, gender): continue
-                meta = szdata.get("metadata") or {}
-                og = meta.get("ogImage") or meta.get("og:image") or ""
-                if isinstance(og, list): og = og[0] if og else ""
-                def _valid(u):                                                                # only a real, full ssense image (not a truncated/placeholder url)
-                    u = (u or "").split("?")[0]
-                    return u if (u.startswith("http") and ("res.cloudinary.com/ssenseweb/image/upload/" in u or re.search(r"ssensemedia\.com/images/w_\d", u))) else None
-                img = _valid(og) or _valid((szdata.get("json") or {}).get("image")) or _valid(p.get("image"))
-                if not img: continue                                                          # no usable image -> skip the item entirely
-                m = re.search(r"(\d+)$", purl)
-                res.append({"url":purl,"id":(m.group(1) if m else purl),"platform":"ssense","brand":b,
-                            "title":title,"category":cat,"price":p.get("price"),"size":sizes,
-                            "condition":"new","gender":gender,"image":img})
+        slug = re.sub(r"[^a-z0-9]+","-",norm(b)).strip("-")
+        data = firecrawl_scrape(f"https://www.ssense.com/en-us/{seg}/designers/{slug}", LIST, proxy="stealth", wait=12000)
+        prods = (data or {}).get("products") or []
+        fresh = 0
+        for p in prods:
+            if fresh >= per_brand: break
+            title = p.get("name",""); cat = infer_cat(title)
+            if cat not in ALLOWED_CATS: continue
+            if CATEGORY and cat != CATEGORY: continue             # category scan: skip before the pricey product-page scrape
+            purl = (p.get("url") or "").split("?")[0]
+            if not purl: continue
+            if purl in existing: continue                         # already cataloged: the per-product stealth scrape was the credit leak
+            fresh += 1
+            szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000, return_meta=True) or {}   # json (sizes) + metadata (og:image)
+            sizes = " ".join((szdata.get("json") or {}).get("sizesAvailable") or [])
+            if not in_size(cat, sizes, b, gender): continue
+            meta = szdata.get("metadata") or {}
+            og = meta.get("ogImage") or meta.get("og:image") or ""
+            if isinstance(og, list): og = og[0] if og else ""
+            def _valid(u):                                                                # only a real, full ssense image (not a truncated/placeholder url)
+                u = (u or "").split("?")[0]
+                return u if (u.startswith("http") and ("res.cloudinary.com/ssenseweb/image/upload/" in u or re.search(r"ssensemedia\.com/images/w_\d", u))) else None
+            img = _valid(og) or _valid((szdata.get("json") or {}).get("image")) or _valid(p.get("image"))
+            if not img: continue                                                          # no usable image -> skip the item entirely
+            m = re.search(r"(\d+)$", purl)
+            res.append({"url":purl,"id":(m.group(1) if m else purl),"platform":"ssense","brand":b,
+                        "title":title,"category":cat,"price":p.get("price"),"size":sizes,
+                        "condition":"new","gender":gender,"image":img})
         return res
     from concurrent.futures import ThreadPoolExecutor
     out = []

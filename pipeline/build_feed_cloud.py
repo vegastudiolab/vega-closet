@@ -497,8 +497,10 @@ def build_for_user(uid, taste, catalog):
         pal, mood = a.get("palette"), a.get("mood")
         return (a.get("silhouette"), pal[0] if isinstance(pal, list) and pal else pal,
                 mood[0] if isinstance(mood, list) and mood else mood)
-    def diversify(lst, head=150):
-        pool = sorted(lst, key=lambda x: -x["score"]); out = []
+    def diversify(lst, head=150, window=400):
+        ranked = sorted(lst, key=lambda x: -x["score"])
+        pool, rest = ranked[:window], ranked[window:]      # only the top window competes for the head (was the whole pool: O(head x pool))
+        out = []
         seen_b, seen_c, seen_s, seen_p = Counter(), Counter(), Counter(), Counter()
         while pool and len(out) < head:
             best, bi = None, -1
@@ -510,7 +512,7 @@ def build_for_user(uid, taste, catalog):
             it = pool.pop(bi); out.append(it)
             seen_b[norm(it.get("brand"))] += 1; seen_c[_cluster(it)] += 1
             seen_s[it.get("platform")] += 1; seen_p[_cluster(it)[1]] += 1
-        return out + pool
+        return out + pool + rest
     ordered = {}
     for key, _t, _s in sections_for(ugender):
         ordered[key] = diversify([i for i in items if i.get("category") == key and not i["isArchived"] and not i["isLiked"]])
@@ -575,6 +577,10 @@ def main():
     t0 = _time.time()
     catalog = fetch_all("catalog", "url,id,platform,brand,title,category,price,size,condition,image,reasons,base_score,sz,first_seen,last_seen,attrs,gender")
     users = fetch_all("taste", "user_id,payload")
+    only = os.environ.get("REBUILD_USER", "").strip()     # set by the conductor on a manual scan
+    if only:
+        users = [u for u in users if u["user_id"] == only]
+        print(f"manual scan: rebuilding only user {only[:8]} (everyone else on the nightly)")
     print(f"catalog {len(catalog)} items | {len(users)} user(s)")
     for u in users:
         build_for_user(u["user_id"], u.get("payload") or {}, catalog)
