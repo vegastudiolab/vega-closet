@@ -609,23 +609,26 @@ def trr_probe():
         return st, (data.get("metadata") or {}).get("statusCode"), raw
     st, sc, raw = call('query{__type(name:"Product"){fields{name type{name kind ofType{name kind}}}} __schema{queryType{fields{name}}}}')
     print(f"PROBE introspection: firecrawl {st}, page {sc}, {len(raw)} chars\n{raw[:12000]}\n")
-    # probe 3: availability is a scalar ("AVAILABLE" on live items). Can the API look up specific
-    # listings in bulk, so a nightly re-check of stored items costs a handful of calls, not one each?
-    st_c, cat_rows = sb("GET", "/rest/v1/catalog?select=id,url&platform=eq.therealreal&order=first_seen.desc&limit=3")
-    cat_rows = cat_rows if isinstance(cat_rows, list) else []
-    ids = [r["id"] for r in cat_rows]; slugs_ = [r["url"].rstrip("/").rsplit("-", 1)[-1] for r in cat_rows]
-    print(f"PROBE using ids {ids} / url-suffix skus {slugs_}")
-    Q = "query P($where:ProductFilters){products(first:5,where:$where){edges{node{id sku url availability}}}}"
-    tests = [("buckets.sku", Q, {"where": {"buckets": {"sku": slugs_}}}),
-             ("buckets.id", Q, {"where": {"buckets": {"id": ids}}}),
-             ("buckets.skus", Q, {"where": {"buckets": {"skus": slugs_}}}),
-             ("where.skus", Q, {"where": {"skus": slugs_}}),
-             ("where.ids", Q, {"where": {"ids": ids}}),
-             ("root product(sku)", "query P($s:String!){product(sku:$s){id sku url availability}}", {"s": slugs_[0] if slugs_ else "x"}),
-             ("root product(id)", "query P($i:ID!){product(id:$i){id sku url availability}}", {"i": ids[0] if ids else "0"})]
-    for label, q, v in tests:
-        st, sc, raw = call(q, v)
-        print(f"PROBE {label}: page {sc}\n{raw[:700]}\n")
+    # probe 4: v3 showed no bulk SKU/id filter but a root product(slug: String!) query. Does it return
+    # availability, and can GraphQL ALIASES batch many lookups per call (the nightly re-check budget)?
+    # 15 newest + 15 oldest stored listings, so the SOLD vocabulary shows up too.
+    from collections import Counter
+    rows_n = sb("GET", "/rest/v1/catalog?select=url&platform=eq.therealreal&order=first_seen.desc&limit=15")[1]
+    rows_o = sb("GET", "/rest/v1/catalog?select=url&platform=eq.therealreal&order=first_seen.asc&limit=15")[1]
+    urls = [r["url"] for r in (rows_n if isinstance(rows_n, list) else []) + (rows_o if isinstance(rows_o, list) else [])]
+    slugs_ = [u.rstrip("/").rsplit("/", 1)[-1] for u in urls]
+    st, sc, raw = call('query P($s:String!){product(slug:$s){id sku url availability}}', {"s": slugs_[0]})
+    print(f"PROBE product(slug) single [{slugs_[0]}]: page {sc}\n{raw[:600]}\n")
+    q = "query{" + " ".join(f'p{i}: product(slug:"{sl}"){{sku availability}}' for i, sl in enumerate(slugs_)) + "}"
+    st, sc, raw = call(q)
+    j = _trr_json(raw)
+    if j and j.get("data"):
+        vals = Counter(json.dumps((v or {}).get("availability") if isinstance(v, dict) else v) for v in j["data"].values())
+        print(f"PROBE aliased batch of {len(slugs_)}: OK -> {dict(vals)}")
+        for k, v in list(j["data"].items())[:30]:
+            print(f"   {k}: {json.dumps(v)[:90]}")
+    else:
+        print(f"PROBE aliased batch of {len(slugs_)}: page {sc}\n{raw[:900]}")
 
 def main():
     if os.environ.get("TRR_PROBE"):
