@@ -118,6 +118,7 @@ def is_blazer(title):
 UNION_SIZES = {
     "men": {
         "tops":  {"l","xl","xxl","52","54","56"},
+        "outerwear": set(),                                   # empty -> falls back to tops
         "waist": {"36","37","38"},
         "shoes": {"14","14.5","15","47","48"},
         "dresses": set(), "skirts": set(),
@@ -125,6 +126,7 @@ UNION_SIZES = {
     },
     "women": {
         "tops":  {"xs","s","m","l","36","38","40","42","0","2","4","6","8"},
+        "outerwear": set(),
         "waist": {"24","25","26","27","28","29","30","0","2","4","6","8","xs","s","m"},
         "shoes": {"5","6","7","8","9","10","11","35","36","37","38","39","40","41"},
         "dresses": {"xs","s","m","l","0","2","4","6","8","10","36","38","40","42"},
@@ -156,7 +158,9 @@ def in_size(cat, s, brand="", gender="men"):
     if cat == "bottoms":
         rx = _size_re(U["waist"] | {t for t in U["tops"] if not t.replace('.','').isdigit() or float(t) > 44})
         return bool(rx and rx.search(s))
-    rx = _size_re(U["tops"])                                          # tops / outerwear
+    if cat == "outerwear":                                            # jackets size separately from shirts
+        rx = _size_re(U.get("outerwear") or U["tops"]); return bool(rx and rx.search(s))
+    rx = _size_re(U["tops"])
     return bool(rx and rx.search(s))
 
 def load_union_sizes(taste_rows):
@@ -170,10 +174,11 @@ def load_union_sizes(taste_rows):
         if not sz: continue
         g = norm(p.get("gender")) or "men"
         if g not in ("men", "women"): g = "men"
-        u = fresh.setdefault(g, {"tops": set(), "waist": set(), "shoes": set(),
+        u = fresh.setdefault(g, {"tops": set(), "outerwear": set(), "waist": set(), "shoes": set(),
                                  "dresses": set(), "skirts": set(), "exceptions": []})
         for k in ("tops", "waist", "shoes", "dresses", "skirts"):
             u[k] |= {norm(x) for x in (sz.get(k) or [])}
+        u["outerwear"] |= {norm(x) for x in (sz.get("outerwear") or sz.get("tops") or [])}   # no jacket list -> their tops sizes apply
         for ex in (sz.get("exceptions") or []):
             u["exceptions"].append({"brand": ex.get("brand",""), "category": ex.get("category",""),
                                     "add": {norm(x) for x in (ex.get("add") or [])}})
@@ -630,20 +635,9 @@ def main():
         if "ssense" in SOURCES and FIRE:      found += scrape_ssense(paid_today, loved_raw, existing, gender=g)
     print(f"scraped {len(found)} raw items")
 
-    # dismissed items are hidden, not banned: if a scan finds one again it returns to the feed
-    # (protects against a "clear feed" that swept up something worth seeing) — per user
-    try:
-        st2, t2 = sb("GET", "/rest/v1/taste?select=user_id,payload")
-        for row in (t2 if isinstance(t2, list) else []):
-            p2 = row.get("payload") or {}; s2 = p2.get("signals") or {}
-            dis = set(s2.get("dismissedUrls") or [])
-            back = dis & {it.get("url") for it in found}
-            if back:
-                s2["dismissedUrls"] = sorted(dis - back); p2["signals"] = s2
-                sb("PATCH", "/rest/v1/taste?user_id=eq." + row["user_id"], {"payload": p2}, {"Prefer": "return=minimal"})
-                print(f"{len(back)} previously-dismissed item(s) re-found — restored for user {row['user_id'][:8]}")
-    except Exception as e:
-        print("un-dismiss check failed:", e)
+    # cleared stays cleared (Charles 2026-09-22): a scan re-finding a dismissed listing no longer
+    # restores it. The feed builder treats clears as half-weight dislikes and hides the same piece
+    # in the same size; a different size or color is a different listing and still comes through.
 
     rows, seen = filter_new(found, existing, loved)
 

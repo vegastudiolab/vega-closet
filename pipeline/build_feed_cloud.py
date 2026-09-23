@@ -14,6 +14,8 @@ STAGE2_TOP_YOUNG = 90    # young models (<MATURE_TAPS) lean harder on the rubric
 STAGE2_MAX_FRESH = 400   # ACTIVE users: whole in-wall pool gets judged, this many fresh verdicts per rebuild (~$1.30 cap)
 ACTIVE_DAYS = 14         # tapped within this window -> active (dormant users keep the small slice)
 MATURE_TAPS = 300        # above this, the user's own fitted weights carry; below, prior + vision carry more
+CLEAR_WEIGHT = 0.5       # a feed clear trains as half a pass (some clears are about size, not style)
+STEAL_RATIO = 0.6        # priced at or under this share of the brand+category median = a steal
 PRIOR = taste_model.load_prior()
 
 def _loadenv():
@@ -135,6 +137,7 @@ def build_for_user(uid, taste, catalog):
     soft = None
     if len(passed_prices) >= 4:
         passed_prices.sort(); soft = passed_prices[len(passed_prices)//4]
+    dismissed = set((taste.get("signals", {}) or {}).get("dismissedUrls") or [])   # feed clears
 
     # ---- taste lanes: gate brand-x-category combos the signals say he passes on, never whole brands.
     # Recomputed from live signals every build, so a gated combo reopens by itself once he loves from it.
@@ -241,6 +244,19 @@ def build_for_user(uid, taste, catalog):
                 # onboarding deck hid brand + price — those features would learn noise
                 c0 = dict(c0); c0["price"] = None; c0["brand"] = ""
             labeled.append((1 if x["action"] in ("liked", "carted") else 0, c0))
+    n_taps = len(labeled)
+    # feed clears train as dislikes at CLEAR_WEIGHT (Charles 2026-09-22: "consider everything
+    # disliked", tempered by "some clears are about size"). Style weights only — never brand
+    # rates, so clearing a whole feed of Prada can't read as a penalty on Prada.
+    acted = liked_ids | carted_ids | passed_ids
+    n_clears = 0
+    for u in dismissed:
+        if u in acted: continue
+        c0 = cat_by_url.get(u)
+        if not (c0 and c0.get("attrs")): continue
+        if (norm(c0.get("gender")) or "men") != ugender or (ugender == "men" and c0.get("category") in ("dresses", "skirts")):
+            continue
+        labeled.append((0, c0, CLEAR_WEIGHT)); n_clears += 1
     # archive uploads join the fit as weighted positives (what you own outweighs what you tap)
     for u in up_store["digested"]:
         row = {"attrs": u["attrs"], "brand": "", "price": None, "category": None, "url": "upload:" + u["path"]}
@@ -249,9 +265,10 @@ def build_for_user(uid, taste, catalog):
     # prior-anchored fit: works at ANY history size — pure house-prior at 0 taps, personal as they grow
     weights, pairs = taste_model.fit_user_weights(labeled, prior=PRIOR)
     brate = taste_model.brand_rates(pairs) if pairs else (lambda b: 0.25)
-    young = len(labeled) < MATURE_TAPS
-    lam = len(labeled) / (len(labeled) + 150)
-    print(f"  stage-1 weights: {len(labeled)} taps, lambda {lam:.2f} personal ({'young' if young else 'mature'} model, {len(weights)} features)")
+    young = n_taps < MATURE_TAPS
+    n_eff = n_taps + CLEAR_WEIGHT * n_clears + (len(labeled) - n_taps - n_clears)
+    lam = n_eff / (n_eff + 150)
+    print(f"  stage-1 weights: {n_taps} taps + {n_clears} clears@{CLEAR_WEIGHT}, lambda {lam:.2f} personal ({'young' if young else 'mature'} model, {len(weights)} features)")
 
     def stage1(it):
         a = it.get("attrs")
@@ -283,6 +300,7 @@ def build_for_user(uid, taste, catalog):
         toks = sorted({norm(t) for t in tokens if t}, key=len, reverse=True)
         return re.compile(r"\b(" + "|".join(re.escape(t) for t in toks) + r")\b") if toks else None
     rx_tops, rx_waist = _rx(usz.get("tops") or []), _rx(usz.get("waist") or [])
+    rx_outer = _rx(usz.get("outerwear") or usz.get("tops") or [])   # jackets size separately; blank = same as tops
     rx_shoes = _rx(usz.get("shoes") or [])
     rx_dress = _rx(usz.get("dresses") or usz.get("tops") or [])   # women: dress sizes; falls back to tops
     exc = [(norm(e.get("brand","")), e.get("category",""), _rx(e.get("add") or []))
@@ -300,11 +318,19 @@ def build_for_user(uid, taste, catalog):
         if cat == "footwear": return bool(rx_shoes and rx_shoes.search(s))
         if cat in ("bottoms", "skirts"): return bool(rx_waist and rx_waist.search(s))
         if cat == "dresses":  return bool((rx_dress and rx_dress.search(s)) or (rx_tops and rx_tops.search(s)))
-        return bool(rx_tops and rx_tops.search(s))         # tops / outerwear
+        if cat == "outerwear": return bool(rx_outer and rx_outer.search(s))
+        return bool(rx_tops and rx_tops.search(s))         # tops
 
-    # urls Charles cleared without judging (bad scan batches etc.) — hidden from the feed,
-    # NEVER fed into taste learning (a dismissal is "not now", not "not my style")
-    dismissed = set((taste.get("signals", {}) or {}).get("dismissedUrls") or [])
+    # cleared listings stay hidden (set above; they also train at CLEAR_WEIGHT). Beyond the exact
+    # listing: the same piece in the same size — cleared or passed — never re-surfaces through
+    # another listing. A different size or color is a different listing and still comes through.
+    def _fam(row):
+        return (norm(row.get("brand")), norm(row.get("title")), norm(row.get("sz")) or norm(row.get("size")))
+    blocked_fam = set()
+    for u in dismissed | passed_ids:
+        r0 = cat_by_url.get(u)
+        if r0: blocked_fam.add(_fam(r0))
+    n_family = 0
 
     items = []
     n_size_retired = 0
@@ -314,6 +340,9 @@ def build_for_user(uid, taste, catalog):
         it["isArchived"] = url in passed_ids
         it["isLiked"] = url in liked_ids or it["isCarted"]      # carted counts as acted/loved
         if not it["isArchived"] and not it["isLiked"] and url in dismissed:
+            continue
+        if not it["isArchived"] and not it["isLiked"] and _fam(it) in blocked_fam:
+            n_family += 1
             continue
         ig = norm(it.get("gender")) or "men"
         if not it["isArchived"] and not it["isLiked"] and ig != "unisex" and ig != ugender:
@@ -419,7 +448,8 @@ def build_for_user(uid, taste, catalog):
                 "category":it.get("category"),"price":it.get("price"),"size":it.get("size"),"condition":it.get("condition"),
                 "image":it.get("image"),"url":it.get("url"),"reasons":it.get("reasons") or [],"score":it["score"],
                 "sz":it.get("sz"),"isArchived":it["isArchived"],"isLiked":it["isLiked"],"isCarted":it.get("isCarted",False),"isNew":it["isNew"],
-                "similar":it.get("similar",0),"pick":bool(it.get("pick"))}
+                "similar":it.get("similar",0),"pick":bool(it.get("pick")),
+                "steal":bool(it.get("steal")),"stealPct":it.get("steal_pct",0)}
     # ---- assembly (audit 2026-09-03): dedupe -> taste-first order with diversity -> picks ----
     # 1) collapse same brand+title+category listings: 18% of the feed was the same piece in other
     #    sizes/conditions. Best-scored survives and carries `similar` = how many it stands for.
@@ -435,6 +465,25 @@ def build_for_user(uid, taste, catalog):
         g[0]["similar"] = len(g) - 1
         for d in g[1:]: drop.add(d["url"]); n_dupes += 1
     items = [it for it in items if it["url"] not in drop]
+    # 1b) steals (Charles 2026-09-22): priced at or under STEAL_RATIO of what this brand+category
+    #     usually lists for across the catalog (a 46k-item price index — no retail prices scraped
+    #     yet), AND in the user's top half by taste. Same gender only; brand medians need >= 5 items.
+    pidx = {}
+    for r in catalog:
+        pr = r.get("price")
+        if isinstance(pr, (int, float)) and pr > 0 and (norm(r.get("gender")) or "men") == ugender:
+            pidx.setdefault((norm(r.get("brand")), r.get("category")), []).append(pr)
+    med = {k: sorted(v)[len(v) // 2] for k, v in pidx.items() if len(v) >= 5}
+    live_un = [it for it in items if not it["isArchived"] and not it["isLiked"]]
+    sc_sorted = sorted(it["score"] for it in live_un)
+    sc_p50 = sc_sorted[len(sc_sorted) // 2] if sc_sorted else 0
+    n_steals = 0
+    for it in live_un:
+        pr = it.get("price")
+        if not (isinstance(pr, (int, float)) and pr > 0): continue
+        ref = med.get((norm(it.get("brand")), it.get("category")))
+        if ref and pr <= STEAL_RATIO * ref and it["score"] >= sc_p50:
+            it["steal"] = True; it["steal_pct"] = int(round((1 - pr / ref) * 100)); n_steals += 1
     # 2) order by TASTE, not arrival (was: newest day first, score only broke ties). Greedy
     #    diversity: every repeat of a brand / look-cluster / source already placed costs a little,
     #    so the head of the feed spans the whole taste instead of one black-boxy-nylon cluster.
@@ -513,7 +562,7 @@ def build_for_user(uid, taste, catalog):
     api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
     print(f"  user {uid[:8]}: {total} to review, {n_liked} liked, {n_arch} archived | "
           f"stage-2 vision on {n_stage2} top items | {n_gated_out} gated out across {len(gated)} combos, "
-          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall (gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed"
+          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall (gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_steals} steals"
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():

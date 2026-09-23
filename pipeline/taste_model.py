@@ -173,7 +173,8 @@ def prune_rare(X, min_df=8):
     keep = {k for k, n in df.items() if n >= min_df}
     return [{k: v for k, v in x.items() if "=" not in k or k in keep} for x in X]
 
-def logistic_fit(X, y, epochs=120, lr=0.15, l2=1.2e-3, seed=7):
+def logistic_fit(X, y, epochs=120, lr=0.15, l2=1.2e-3, seed=7, sw=None):
+    """sw: optional per-sample weights (a half-weight negative pulls half as hard)."""
     w = {}
     idx = list(range(len(X)))
     rnd = random.Random(seed)
@@ -182,7 +183,7 @@ def logistic_fit(X, y, epochs=120, lr=0.15, l2=1.2e-3, seed=7):
         for i in idx:
             z = sum(w.get(k, 0.0) * v for k, v in X[i].items())
             p = 1.0 / (1.0 + math.exp(-max(-30, min(30, z))))
-            g = p - y[i]
+            g = (p - y[i]) * (sw[i] if sw else 1.0)
             for k, v in X[i].items():
                 w[k] = w.get(k, 0.0) - lr * (g * v + l2 * w.get(k, 0.0))
         lr *= 0.985
@@ -238,16 +239,20 @@ def blend(w_user, w_prior, n, half=150):
     return {k: lam * w_user.get(k, 0.0) + (1 - lam) * w_prior.get(k, 0.0) for k in keys}
 
 def fit_user_weights(labeled, prior=None):
-    """labeled: list of (label01, catalog_row_with_attrs). Returns (weights, brate_fn_source_pairs).
-    With a prior, the returned weights are prior-anchored — usable at ANY history size."""
-    pairs = [(l, (c.get("brand") or "")) for l, c in labeled]
+    """labeled: list of (label01, catalog_row_with_attrs[, weight]). Returns (weights, brate_fn_source_pairs).
+    With a prior, the returned weights are prior-anchored — usable at ANY history size.
+    Weighted samples (e.g. feed clears at 0.5) shape the STYLE weights but not the brand rates —
+    a mass clear of the whole feed must never read as a penalty on the brands he loves."""
+    rows = [(t[0], t[1], (t[2] if len(t) > 2 else 1.0)) for t in labeled]
+    pairs = [(l, (c.get("brand") or "")) for l, c, w in rows if w >= 1.0]
     rate = brand_rates(pairs)
+    n_eff = sum(w for _, _, w in rows)
     w_user = {}
-    if len(labeled) >= 40:                                   # below the fit floor, the prior carries alone
-        X = [featurize(c["attrs"], c.get("brand"), c.get("price"), c.get("category"), rate(c.get("brand"))) for _, c in labeled]
+    if n_eff >= 40:                                          # below the fit floor, the prior carries alone
+        X = [featurize(c["attrs"], c.get("brand"), c.get("price"), c.get("category"), rate(c.get("brand"))) for _, c, _ in rows]
         X = prune_rare(X)
-        y = [l for l, _ in labeled]
-        w_user = logistic_fit(X, y)
+        y = [l for l, _, _ in rows]
+        w_user = logistic_fit(X, y, sw=[w for _, _, w in rows])
     if prior:
-        return blend(w_user, prior, len(labeled)), pairs
+        return blend(w_user, prior, n_eff), pairs
     return w_user, pairs

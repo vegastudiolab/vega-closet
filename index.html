@@ -591,6 +591,7 @@
       <div class="fit-lead">stand still. this is the part that makes trm ruthless:</div>
       <div class="fit-aside">nothing that doesn't fit you will ever reach your feed. not once. tap all that fit — close enough is fine.</div>
       <div class="fit-lbl">chest / tops</div><div class="fit-chips" id="szTops"></div>
+      <div class="fit-lbl">jackets / outerwear <span style="opacity:.6">— leave blank if same as tops</span></div><div class="fit-chips" id="szOuter"></div>
       <div class="fit-lbl">waist</div><div class="fit-chips" id="szWaist"></div>
       <div class="fit-lbl">shoes (us)</div><div class="fit-chips" id="szShoes"></div>
       <div style="flex:1"></div>
@@ -635,6 +636,7 @@
 
     <div class="fit-lbl">measurements — nothing that doesn't fit will ever appear</div>
     <div class="fit-lbl" style="margin-top:10px; font-size:8.5px;">tops</div><div class="fit-chips" id="mSzTops"></div>
+    <div class="fit-lbl" style="font-size:8.5px;">jackets / outerwear <span style="opacity:.6">(blank = same as tops)</span></div><div class="fit-chips" id="mSzOuter"></div>
     <div class="fit-lbl" style="font-size:8.5px;">waist</div><div class="fit-chips" id="mSzWaist"></div>
     <div class="fit-lbl" style="font-size:8.5px;">shoes (us)</div><div class="fit-chips" id="mSzShoes"></div>
 
@@ -898,12 +900,13 @@
       const sizePill = it.size ? `<span class="pill sz">size ${esc(it.size)}</span>` : "";
       const condPill = it.condition ? `<span class="pill">${esc(it.condition)}</span>` : "";
       const simPill  = it.similar ? `<span class="pill">+${Number(it.similar)} more listed</span>` : "";   // dupes collapsed by the builder
+      const stealPill = it.steal ? `<span class="pill">steal · ${Number(it.stealPct)}% under typical</span>` : "";
       const why = (it.reasons||[]).slice(0,4).map(r=>`<span class="w">${esc(r)}</span>`).join("");
       const initial = esc((it.brand||"?").charAt(0));
       const img = safeUrl(it.image), href = safeUrl(it.url);
       const plat = esc(platLabel[it.platform]||it.platform);
       const searchText = esc(((it.brand||"")+" "+(it.title||"")+" "+((it.reasons||[]).join(" "))).toLowerCase());
-      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}" data-carted="${it.isCarted?1:0}" data-pick="${it.pick?1:0}" data-search="${searchText}">
+      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}" data-carted="${it.isCarted?1:0}" data-pick="${it.pick?1:0}" data-steal="${it.steal?1:0}" data-search="${searchText}">
         <div class="imgwrap">
           ${badge}
           <img src="${img}" alt="${esc(it.title)}" loading="lazy" referrerpolicy="no-referrer" decoding="async"
@@ -915,7 +918,7 @@
           <div class="ey">${esc(it.brand)} · ${plat}</div>
           <div class="ttl">${esc(it.title)}</div>
           <div class="price"><span class="now">${money(it.price)}</span>${was}${off}</div>
-          <div class="meta">${sizePill}${condPill}${simPill}<span class="pill">${esc(it.category)}</span></div>
+          <div class="meta">${sizePill}${condPill}${simPill}${stealPill}<span class="pill">${esc(it.category)}</span></div>
           <div class="why">${why}</div>
           <div class="acts">
             <button class="act like" data-act="like" type="button">♥<span class="alab"> love</span></button>
@@ -942,7 +945,7 @@
     const VIEW = { status:"feed", cat:"all", sz:"all", price:"all", plat:"all", sort:"default" };
     let SEARCH_Q = "";
     const cards = () => [...document.querySelectorAll(".card")];
-    const STAT  = [["feed","feed"],["picks","picks"],["liked","liked"],["cart","cart"],["archived","archived"],["all","all"]];
+    const STAT  = [["feed","feed"],["picks","picks"],["steals","steals"],["liked","liked"],["cart","cart"],["archived","archived"],["all","all"]];
     const CATS  = [["all","all"],["outerwear","outerwear"],["tops","tops"],["pants","bottoms"],["shoes","footwear"],["accessories","accessories"]];
     const PLATS = [["all","all"],["grailed","grailed"],["the realreal","therealreal"],["ssense","ssense"]];
     const PRICES= [["all","all"],["under $200","0-200"],["$200–500","200-500"],["$500–1k","500-1000"],["$1k+","1000-"]];
@@ -951,6 +954,7 @@
     const SIZES = [["all","all"],["L","L"],["XL","XL"],["XXL","XXL"],["w 36","w36"],["w 38","w38"],["us 14","us14"],["us 15","us15"],["eu 46-48","eu46-48"],["one size","os"],["us 13","us13"],["eu 47-49","eu47-49"]].filter(([l,v])=>v==="all"||szSeen.has(v));
     function statusMatch(c,s){
       if (s==="picks")    return c.dataset.pick==="1" && statusMatch(c,"feed");   // the 40 strongest cards, still un-acted
+      if (s==="steals")   return c.dataset.steal==="1" && statusMatch(c,"feed");  // priced well under what the brand usually lists for
       if (s==="liked")    return c.dataset.liked==="1" && c.dataset.carted!=="1";
       if (s==="cart")     return c.dataset.carted==="1";
       if (s==="archived") return c.dataset.archived==="1";
@@ -1036,6 +1040,7 @@
           em.textContent = q ? "no results for \""+SEARCH_Q+"\". try a different search."
                          : VIEW.status==="feed"     ? "you're all caught up. tap scan now for fresh pieces, or 'all' to browse everything you've saved."
                          : VIEW.status==="picks"    ? "no picks yet — they land with the next rebuild."
+                         : VIEW.status==="steals"   ? "no steals right now — a steal is a piece you'd rate, priced well under what its house usually lists for."
                          : VIEW.status==="liked"    ? "nothing loved here yet."
                          : VIEW.status==="archived" ? "nothing passed here yet." : "nothing here yet."; }
         else em.style.display="none";
@@ -1214,8 +1219,9 @@
 
     document.getElementById("hidePass").onclick=function(){ document.body.classList.toggle("hidepassed"); this.classList.toggle("on"); };
 
-    // clear feed: dismiss every unreviewed piece WITHOUT training taste (a clear is "not now",
-    // not "not my style"). Dismissed items come back if a future scan finds them again.
+    // clear feed: dismiss every unreviewed piece. Since 2026-09-22 a clear trains the model as
+    // half a pass, stays cleared for good (no restore on re-scan), and hides the same piece in the
+    // same size — a different size or color is a different listing and still comes through.
     let CLEAR_ARMED = null;
     document.getElementById("clearFeed").onclick = async function(){
       const ok = document.getElementById("sigok");
@@ -1304,9 +1310,9 @@
           // measurements: gendered chip sets, prefilled from what's on file
           const cur = p.sizes || {};
           const sets = modGender === "women"
-            ? { mSzTops:["xxs","xs","s","m","l","xl","0","2","4","6","8","10","12"], mSzWaist:["23","24","25","26","27","28","29","30","31","32"], mSzShoes:["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","11"] }
-            : { mSzTops:["xs","s","m","l","xl","xxl"], mSzWaist:["28","30","32","34","36","38","40","42","44"], mSzShoes:["8","9","10","11","12","13","14","15"] };
-          const curOf = { mSzTops:(cur.tops||[]), mSzWaist:(cur.waist||[]), mSzShoes:(cur.shoes||[]) };
+            ? { mSzTops:["xxs","xs","s","m","l","xl","0","2","4","6","8","10","12"], mSzOuter:["xxs","xs","s","m","l","xl","0","2","4","6","8","10","12"], mSzWaist:["23","24","25","26","27","28","29","30","31","32"], mSzShoes:["5","5.5","6","6.5","7","7.5","8","8.5","9","9.5","10","11"] }
+            : { mSzTops:["xs","s","m","l","xl","xxl"], mSzOuter:["xs","s","m","l","xl","xxl"], mSzWaist:["28","30","32","34","36","38","40","42","44"], mSzShoes:["8","9","10","11","12","13","14","15"] };
+          const curOf = { mSzTops:(cur.tops||[]), mSzOuter:(cur.outerwear||[]), mSzWaist:(cur.waist||[]), mSzShoes:(cur.shoes||[]) };
           for (const id in sets){
             const el = document.getElementById(id);
             el.innerHTML = sets[id].map(v => '<button class="fit-chip' + (curOf[id].includes(v) ? ' on' : '') + '" data-v="' + v + '">' + v + '</button>').join("");
@@ -1370,11 +1376,12 @@
           (p.brands = p.brands || {}).loved = merged;
           // measurements: save only if something is picked (never wipe sizes by accident)
           const pk = id => [...document.querySelectorAll('#' + id + ' .fit-chip.on')].map(c => c.dataset.v);
-          const tops = pk("mSzTops"), waist = pk("mSzWaist"), shoesUs = pk("mSzShoes");
+          const tops = pk("mSzTops"), waist = pk("mSzWaist"), shoesUs = pk("mSzShoes"), outer = pk("mSzOuter");
           if (tops.length && waist.length && shoesUs.length){
             const euOff = modGender === "women" ? 31 : 33;
             const shoes = [...new Set(shoesUs.flatMap(n => [n, String(Math.round((+n + euOff) * 10) / 10)]))];
             p.sizes = Object.assign(p.sizes || {}, { tops, waist, shoes });
+            if (outer.length) p.sizes.outerwear = outer; else delete p.sizes.outerwear;   // blank = same as tops
             if (modGender === "women") p.sizes.dresses = tops;
           }
           await sb.from("taste").update({ payload: p }).eq("user_id", userId);
@@ -1860,10 +1867,12 @@
       function buildSizeChips(){
         if (FIT_GENDER === "women"){
           chipGroup($("szTops"), ["xxs", "xs", "s", "m", "l", "xl", "0", "2", "4", "6", "8", "10", "12"]);
+          chipGroup($("szOuter"), ["xxs", "xs", "s", "m", "l", "xl", "0", "2", "4", "6", "8", "10", "12"]);
           chipGroup($("szWaist"), ["23", "24", "25", "26", "27", "28", "29", "30", "31", "32"]);
           chipGroup($("szShoes"), ["5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "11"]);
         } else {
           chipGroup($("szTops"), ["xs", "s", "m", "l", "xl", "xxl"]);
+          chipGroup($("szOuter"), ["xs", "s", "m", "l", "xl", "xxl"]);
           chipGroup($("szWaist"), ["28", "30", "32", "34", "36", "38", "40", "42", "44"]);
           chipGroup($("szShoes"), ["8", "9", "10", "11", "12", "13", "14", "15"]);
         }
@@ -1883,6 +1892,7 @@
             const p = (t && t.payload) || {};
             p.gender = FIT_GENDER;
             p.sizes = { tops, waist, shoes };
+            const outer = picked($("szOuter")); if (outer.length) p.sizes.outerwear = outer;
             if (FIT_GENDER === "women") p.sizes.dresses = tops;    // dress sizes track tops (alpha + numeric)
             if (ceiling) p.ceiling = ceiling;
             const bl = ((p.brands = p.brands || {}).loved = p.brands.loved || []);
