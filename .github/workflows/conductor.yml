@@ -34,6 +34,9 @@ on:
       gender:
         description: 'scan scope: men | women (blank = all genders users need)'
         default: ''
+      trr_probe:
+        description: 'schema probe only (no scan, no rebuild): introspect TRR GraphQL'
+        default: ''
 
 # never let two runs stomp each other
 concurrency:
@@ -47,6 +50,8 @@ jobs:
     # job also carries the rebuild + nucleus steps. At 30 the timeout killed every scheduled scan
     # Aug 5-10 BEFORE the catalog insert — scraping spent, zero items stored.
     timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: '1'     # line-by-line log timestamps (buffered output made every scan line flush at once)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -70,10 +75,11 @@ jobs:
           CATEGORY:       ${{ github.event.inputs.category || '' }}
           NO_VISION:      ${{ github.event.inputs.no_vision || '' }}
           GENDER:         ${{ github.event.inputs.gender || '' }}
+          TRR_PROBE:      ${{ github.event.inputs.trr_probe || '' }}
         run: python pipeline/conductor.py
 
       - name: rebuild every user's feed
-        if: always()
+        if: ${{ !cancelled() && github.event.inputs.trr_probe == '' }}
         env:
           SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -81,7 +87,7 @@ jobs:
         run: python pipeline/build_feed_cloud.py
 
       - name: nucleus admin snapshot        # refresh the admin dashboard after every scan + rebuild
-        if: always()
+        if: ${{ !cancelled() && github.event.inputs.trr_probe == '' }}
         env:
           SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}

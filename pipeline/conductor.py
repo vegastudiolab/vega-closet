@@ -578,7 +578,28 @@ def filter_new(found, known, loved):
                      "sz": size_bucket(it), "first_seen": TODAY, "last_seen": TODAY})
     return rows, newurls
 
+def trr_probe():
+    """One-off schema discovery for TRR's GraphQL (dispatch conductor with trr_probe=1). Introspects
+    the Product type + root queries, then asks for candidate availability fields — validation
+    errors name every unknown field at once, so whatever is NOT in the error list exists."""
+    def call(q, variables=None):
+        url = "https://api.therealreal.com/graphql?query=" + urllib.parse.quote(q) + ("&variables=" + urllib.parse.quote(json.dumps(variables)) if variables else "")
+        FIRECRAWL_CALLS[0] += 1
+        st, r = http("POST", "https://api.firecrawl.dev/v2/scrape", {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
+                     {"Authorization": "Bearer " + FIRE}, timeout=180)
+        data = (r.get("data") or {}) if isinstance(r, dict) else {}
+        raw = re.sub(r"<[^>]+>", "", data.get("rawHtml") or "")
+        return st, (data.get("metadata") or {}).get("statusCode"), raw
+    st, sc, raw = call('query{__type(name:"Product"){fields{name type{name kind ofType{name kind}}}} __schema{queryType{fields{name}}}}')
+    print(f"PROBE introspection: firecrawl {st}, page {sc}, {len(raw)} chars\n{raw[:12000]}\n")
+    cands = ["availability", "available", "isSold", "sold", "soldOut", "inStock", "status", "state",
+             "inventoryStatus", "isAvailable", "availableForPurchase", "salesStatus", "obsessed", "isOnHold"]
+    st, sc, raw = call("query P($first:Int){products(first:$first){edges{node{id " + " ".join(cands) + "}}}}", {"first": 2})
+    print(f"PROBE candidates: firecrawl {st}, page {sc}, {len(raw)} chars\n{raw[:6000]}")
+
 def main():
+    if os.environ.get("TRR_PROBE"):
+        trr_probe(); return
     # ALL users' taste rows: loved brands and sizes are UNIONED (the shared catalog serves everyone);
     # tasteWeights for scan-cap ranking still come from the first row (fine at small N — it only
     # affects which candidates a manual scan keeps, and scans are per-person anyway).
