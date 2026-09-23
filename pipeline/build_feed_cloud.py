@@ -3,7 +3,7 @@
 # Runs the SAME adj_score as the local build_feed.py (byte-for-byte: +0.30 loved-pin,
 # NO brand penalty, style-tag +/-, soft price ceiling). Writes each user's feeds row
 # and folds lasting patterns back into their taste. Config from env (Actions) or .env.
-import os, sys, re, json, urllib.request, urllib.error
+import os, sys, re, json, urllib.request, urllib.error, time as _time
 from collections import Counter
 from datetime import date, datetime, timezone, timedelta
 import taste_model
@@ -59,11 +59,15 @@ def api_raw(method, path):
 
 _PK = {"catalog": "url", "signals": "url", "user_scores": "url", "taste": "user_id", "feeds": "user_id"}  # stable paging: Range windows without ORDER BY overlap/skip rows as the heap changes (2026-09-23 incident)
 def fetch_all(table, select, extra_qs=""):
-    rows = []; start = 0; step = 1000
+    rows = []; start = 0; step = 1000; tries = 0
     while True:
         st, part = api("GET", f"/rest/v1/{table}?select={select}{extra_qs}&order={_PK.get(table, 'url')}", None,
                        {"Range-Unit": "items", "Range": f"{start}-{start+step-1}"})
-        if st not in (200, 206): print("fetch fail", table, st, str(part)[:200]); sys.exit(1)
+        if st not in (200, 206) or not isinstance(part, list):
+            if tries < 3 and (st == 0 or st >= 500):          # transient (Supabase 52x outage 2026-09-23 killed a run mid-way)
+                tries += 1; print(f"  fetch {table} {st} — retry {tries}"); _time.sleep(5 * 2 ** tries); continue
+            print("fetch fail", table, st, str(part)[:200]); sys.exit(1)
+        tries = 0
         rows += part
         if len(part) < step: break
         start += step

@@ -4,7 +4,7 @@
 # existing wardrobe_select_own RLS policy makes it readable only by that account. No new tables.
 # Runs after every scan + rebuild (conductor.yml / attr-extract.yml); keeps a rolling daily history.
 #   env: SUPABASE_URL, SUPABASE_SECRET_KEY, ADMIN_UID (defaults to Charles)
-import os, sys, json, urllib.request, urllib.parse
+import os, sys, json, urllib.request, urllib.parse, time as _time
 from datetime import date, datetime, timezone, timedelta
 from collections import Counter, defaultdict
 
@@ -40,12 +40,15 @@ def http(method, path, body=None, extra=None, raw=False):
 
 _PK = {"catalog": "url", "signals": "url", "user_scores": "url", "taste": "user_id", "feeds": "user_id"}  # stable paging: Range windows without ORDER BY overlap/skip rows as the heap changes (2026-09-23 incident)
 def fetch_all(table, select, qs=""):
-    rows, start = [], 0
+    rows, start, tries = [], 0, 0
     while True:
         st, part = http("GET", f"/rest/v1/{table}?select={select}{qs}&order={_PK.get(table, 'url')}", None,
                         {"Range-Unit": "items", "Range": f"{start}-{start+999}"})
         if st not in (200, 206) or not isinstance(part, list):
+            if tries < 3 and (st == 0 or st >= 500):          # transient outage: retry before failing the snapshot
+                tries += 1; print(f"  fetch {table} {st} — retry {tries}"); _time.sleep(5 * 2 ** tries); continue
             print(f"fetch fail {table} {st}"); sys.exit(1)
+        tries = 0
         rows += part
         if len(part) < 1000: break
         start += 1000
