@@ -75,7 +75,7 @@ def fetch_all(table, select, extra_qs=""):
 
 def norm(s): return (s or "").strip().lower()
 
-_SKIP = {"new","gently used","in-size","in size","value","grail","#1 brand","loved brand","deck","unrated",
+_SKIP = {"new","gently used","in-size","in size","value","grail","#1 brand","loved brand","deck","unrated","sold",
          "your basics brand","grailed","ssense","the realreal","therealreal",
          "xs","s","m","l","xl","xxl","xxxl","os"}
 def is_style(t):
@@ -336,6 +336,7 @@ def build_for_user(uid, taste, catalog):
         r0 = cat_by_url.get(u)
         if r0: blocked_fam.add(_fam(r0))
     n_family = 0
+    n_sold = 0
 
     items = []
     n_size_retired = 0
@@ -348,6 +349,9 @@ def build_for_user(uid, taste, catalog):
             continue
         if not it["isArchived"] and not it["isLiked"] and _fam(it) in blocked_fam:
             n_family += 1
+            continue
+        if not it["isArchived"] and not it["isLiked"] and "sold" in (it.get("reasons") or []):
+            n_sold += 1                                    # marked sold on TRR — never live again
             continue
         ig = norm(it.get("gender")) or "men"
         if not it["isArchived"] and not it["isLiked"] and ig != "unisex" and ig != ugender:
@@ -569,7 +573,7 @@ def build_for_user(uid, taste, catalog):
     api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
     print(f"  user {uid[:8]}: {total} to review, {n_liked} liked, {n_arch} archived | "
           f"stage-2 vision on {n_stage2} top items | {n_gated_out} gated out across {len(gated)} combos, "
-          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall (gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_steals} steals"
+          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall (gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_sold} sold hidden | {n_steals} steals"
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():

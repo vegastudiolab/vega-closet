@@ -73,7 +73,7 @@ def main(urls):
     for raw in urls:
         url = raw.split("?")[0].strip()
         print("=" * 78); print(url)
-        rows = get(f"/rest/v1/catalog?select=url,brand,title,category,gender,size,sz,price,first_seen,attrs&url=eq.{urllib.parse.quote(url, safe='')}")
+        rows = get(f"/rest/v1/catalog?select=url,brand,title,category,gender,size,sz,price,first_seen,attrs,reasons&url=eq.{urllib.parse.quote(url, safe='')}")
         if not rows:
             plat = "grailed" if "grailed.com" in url else "therealreal" if "therealreal.com" in url else "ssense" if "ssense.com" in url else "?"
             print(f"  NOT IN CATALOG — never stored. Either never scraped, or scraped and rejected before insert")
@@ -89,6 +89,8 @@ def main(urls):
             x = by_url[url]; print(f"  -> you already acted on it: {x['action'].upper()} on {x['created_at'][:10]}"); continue
         if url in dismissed:
             print("  -> you CLEARED it (dismissed). Cleared stays cleared."); continue
+        if "sold" in (r.get("reasons") or []):
+            print("  -> marked SOLD on The RealReal — never shown live again"); continue
         g = norm(r.get("gender")) or "men"
         if g not in ("unisex", ugender):
             print(f"  -> DROPPED by gender gate: tagged {g}, you're {ugender}"); continue

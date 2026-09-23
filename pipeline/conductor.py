@@ -375,7 +375,7 @@ TRR_QUERY = ("query P($first:Int,$after:String,$where:ProductFilters,$sortBy:Sor
              "products(first:$first,after:$after,where:$where,sortBy:$sortBy,currency:$currency){"
              "totalCount pageInfo{endCursor hasNextPage} edges{node{id sku name url "
              "brandUnion{...on Designer{name} ...on Artist{name}} price{final{usdCents}} images{url} "
-             "attributes{type values} condition}}}}")
+             "attributes{type values} condition availability}}}}")
 TRR_TAXCAT = {"men/clothing/outerwear":"outerwear", "men/clothing/sweaters-sweatshirts":"tops",
               "men/clothing/shirts":"tops", "men/clothing/pants":"bottoms", "men/clothing/jeans":"bottoms",
               "men/shoes":"footwear"}
@@ -386,6 +386,7 @@ TRR_TAXCAT_W = {"women/clothing/coats-and-jackets":"outerwear", "women/clothing/
 # GraphQL API does NOT reliably honor taxonsPermalink (audit 2026-08-04: jeans and women's skirts came
 # back from a men's-shirts request and were stored as men's tops). The URL is ground truth — always
 # derive category + gender from it; the requested taxon is only the fallback when the URL won't parse.
+TRR_UNAVAILABLE = []    # (url, availability) for listings a scan saw as not AVAILABLE — never stored; marked sold if already held
 TRR_URL_RX  = re.compile(r"/products/(men|women)/(?:clothing/)?([a-z0-9-]+)/")
 TRR_URL_CAT = {"jeans":"bottoms","pants":"bottoms","shorts":"bottoms","shirts":"tops","t-shirts":"tops",
                "sweaters-sweatshirts":"tops","sweaters":"tops","tops":"tops","knitwear":"tops",
@@ -418,7 +419,7 @@ def trr_graphql(variables):
     return ((payload or {}).get("data") or {}).get("products") if payload else None
 
 def _trr_taxon(taxon, cat, slugs, loved_raw, gender):
-    out = []
+    out = []; sold = 0
     buckets = {"taxonsPermalink": [taxon], "designerSlug": slugs}
     if gender == "men" and cat in ("outerwear", "tops"): buckets["clothingSize"] = ["27", "28", "29"]   # men L/XL/XXL server-side; women filtered client-side
     after = None
@@ -430,8 +431,10 @@ def _trr_taxon(taxon, cat, slugs, loved_raw, gender):
             print(f"  trr {taxon}: blocked/empty"); break
         for e in pr.get("edges", []):
             n = e.get("node") or {}
-            brand = (n.get("brandUnion") or {}).get("name") or ""
             url = (n.get("url") or "").split("?")[0]
+            if (n.get("availability") or "AVAILABLE") != "AVAILABLE":      # sold / on hold (Charles 2026-09-23): never store
+                TRR_UNAVAILABLE.append((url, n.get("availability"))); sold += 1; continue
+            brand = (n.get("brandUnion") or {}).get("name") or ""
             # category + gender from the item's OWN URL taxonomy (TRR ignores the taxon filter);
             # gender attribute is the secondary signal (usually absent), scan scope the last resort.
             um = TRR_URL_RX.search(url)
@@ -453,7 +456,7 @@ def _trr_taxon(taxon, cat, slugs, loved_raw, gender):
         after = pi.get("endCursor")
         if not pi.get("hasNextPage"): break
     off = sum(1 for r in out if r.get("category") != cat or r.get("gender") != gender)
-    print(f"  trr {taxon}: {len(out)} items" + (f" ({off} off-taxon, retagged from URL)" if off else ""))
+    print(f"  trr {taxon}: {len(out)} items" + (f" ({off} off-taxon, retagged from URL)" if off else "") + (f" ({sold} not available, skipped)" if sold else ""))
     return out
 
 def scrape_trr(loved, loved_raw, gender="men"):
@@ -606,18 +609,23 @@ def trr_probe():
         return st, (data.get("metadata") or {}).get("statusCode"), raw
     st, sc, raw = call('query{__type(name:"Product"){fields{name type{name kind ofType{name kind}}}} __schema{queryType{fields{name}}}}')
     print(f"PROBE introspection: firecrawl {st}, page {sc}, {len(raw)} chars\n{raw[:12000]}\n")
-    # probe 1 found Product.availability exists; now: scalar or object, and what values does it take?
-    from collections import Counter
-    st, sc, raw = call("query P($first:Int,$where:ProductFilters,$sortBy:SortBy){products(first:$first,where:$where,sortBy:$sortBy){edges{node{id sku availability}}}}",
-                       {"first": 60, "where": {"buckets": {"taxonsPermalink": ["men/clothing/outerwear"]}}, "sortBy": "NEWEST"})
-    j = _trr_json(raw)
-    if j and j.get("data"):
-        vals = Counter(json.dumps(e["node"].get("availability")) for e in j["data"]["products"]["edges"])
-        print(f"PROBE availability (scalar) over 60 newest men's outerwear: {dict(vals)}")
-    else:
-        print(f"PROBE availability scalar: firecrawl {st}, page {sc}\n{raw[:1500]}")
-        st, sc, raw = call("query P($first:Int){products(first:$first){edges{node{id availability{__typename}}}}}", {"first": 2})
-        print(f"PROBE availability object: firecrawl {st}, page {sc}\n{raw[:1500]}")
+    # probe 3: availability is a scalar ("AVAILABLE" on live items). Can the API look up specific
+    # listings in bulk, so a nightly re-check of stored items costs a handful of calls, not one each?
+    st_c, cat_rows = sb("GET", "/rest/v1/catalog?select=id,url&platform=eq.therealreal&order=first_seen.desc&limit=3")
+    cat_rows = cat_rows if isinstance(cat_rows, list) else []
+    ids = [r["id"] for r in cat_rows]; slugs_ = [r["url"].rstrip("/").rsplit("-", 1)[-1] for r in cat_rows]
+    print(f"PROBE using ids {ids} / url-suffix skus {slugs_}")
+    Q = "query P($where:ProductFilters){products(first:5,where:$where){edges{node{id sku url availability}}}}"
+    tests = [("buckets.sku", Q, {"where": {"buckets": {"sku": slugs_}}}),
+             ("buckets.id", Q, {"where": {"buckets": {"id": ids}}}),
+             ("buckets.skus", Q, {"where": {"buckets": {"skus": slugs_}}}),
+             ("where.skus", Q, {"where": {"skus": slugs_}}),
+             ("where.ids", Q, {"where": {"ids": ids}}),
+             ("root product(sku)", "query P($s:String!){product(sku:$s){id sku url availability}}", {"s": slugs_[0] if slugs_ else "x"}),
+             ("root product(id)", "query P($i:ID!){product(id:$i){id sku url availability}}", {"i": ids[0] if ids else "0"})]
+    for label, q, v in tests:
+        st, sc, raw = call(q, v)
+        print(f"PROBE {label}: page {sc}\n{raw[:700]}\n")
 
 def main():
     if os.environ.get("TRR_PROBE"):
@@ -715,6 +723,11 @@ def main():
 
     rows, seen = filter_new(found, existing, loved)
 
+    # TRR listings this scan saw as no-longer-available that we already hold: tag them sold
+    # (reasons += "sold" — the same marker mechanism as "unrated") so no feed shows them again
+    gone = sorted({u for u, _ in TRR_UNAVAILABLE if u and u in existing})
+    if gone: mark_sold(gone)
+
     # ---- top up: keep pulling FRESH grailed brands until we reach the minimum ----
     # NEVER on a brand-specific scan: asking for thug club must not backfill with randoms —
     # coming back under target is the honest answer when the brand has nothing new.
@@ -790,6 +803,20 @@ def main():
         "firecrawl_calls": FIRECRAWL_CALLS[0], "apify_calls": APIFY_CALLS[0],
         "duration_s": round(_time.time() - _T0),
     })
+
+def mark_sold(urls):
+    n = 0
+    for i in range(0, len(urls), 50):
+        chunk = urls[i:i+50]
+        st, rows_ = sb("GET", "/rest/v1/catalog?select=url,reasons&url=in.(" + ",".join(urllib.parse.quote(u, safe="") for u in chunk) + ")")
+        if st != 200 or not isinstance(rows_, list): print(f"  mark_sold fetch {st}"); continue
+        for r in rows_:
+            rs = r.get("reasons") or []
+            if "sold" in rs: continue
+            st2, _ = sb("PATCH", "/rest/v1/catalog?url=eq." + urllib.parse.quote(r["url"], safe=""), {"reasons": rs + ["sold"]}, {"Prefer": "return=minimal"})
+            if st2 in (200, 204): n += 1
+    print(f"  marked {n} already-cataloged TRR listing(s) sold")
+    return n
 
 def size_bucket(it):
     s = norm(it.get("size")); cat = it.get("category","")
