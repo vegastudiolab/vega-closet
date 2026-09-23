@@ -40,6 +40,13 @@ import time as _time
 _T0 = _time.time()
 FIRECRAWL_CALLS = [0]   # scraper-cost counters for the Nucleus run record
 APIFY_CALLS = [0]
+import threading as _thr
+_CNT_LOCK = _thr.Lock()
+def _count(c):
+    with _CNT_LOCK: c[0] += 1
+# every Firecrawl call funnels through this gate, so sources/genders/brands can run concurrently
+# without tripping the plan's concurrency limit (8 was already the proven TRR fan-out)
+FIRECRAWL_SEM = _thr.BoundedSemaphore(int(os.environ.get("FIRECRAWL_CONCURRENCY", "8")))
 NO_VISION = os.environ.get("NO_VISION", "").strip().lower() in ("1", "true", "yes")  # raw scan: skip taste rating, tag items "unrated"
 TODAY = date.today().isoformat()
 
@@ -253,7 +260,7 @@ def brand_matches(text, loved_raw):
 
 # ---------- source scrapers ----------
 def apify_run(actor, inp, memory=1024, wait=280):
-    APIFY_CALLS[0] += 1
+    _count(APIFY_CALLS)
     st, run = http("POST", f"https://api.apify.com/v2/acts/{actor}/runs?token={APIFY}&memory={memory}", inp)
     if st in (402, 429):
         print(f"  APIFY CAP/LIMIT ({st}) — stopping this source, keeping what we have"); return None
@@ -395,10 +402,11 @@ def _trr_json(raw):
 
 def trr_graphql(variables):
     url = "https://api.therealreal.com/graphql?query=" + urllib.parse.quote(TRR_QUERY) + "&variables=" + urllib.parse.quote(json.dumps(variables))
-    FIRECRAWL_CALLS[0] += 1
-    st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",                     # Firecrawl stealth clears TRR's PerimeterX wall
-                 {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
-                 {"Authorization": "Bearer " + FIRE}, timeout=180)
+    _count(FIRECRAWL_CALLS)
+    with FIRECRAWL_SEM:
+        st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",                 # Firecrawl stealth clears TRR's PerimeterX wall
+                     {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
+                     {"Authorization": "Bearer " + FIRE}, timeout=180)
     data = (r.get("data") or {}) if isinstance(r, dict) else {}
     sc = (data.get("metadata") or {}).get("statusCode")
     payload = _trr_json(data.get("rawHtml") or "") if sc == 200 else None
@@ -461,10 +469,11 @@ def scrape_trr(loved, loved_raw, gender="men"):
     return out
 
 def firecrawl_scrape(url, schema, proxy="auto", wait=9000, return_meta=False):
-    FIRECRAWL_CALLS[0] += 1
-    st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",
-                 {"url":url,"formats":[{"type":"json","schema":schema}],"waitFor":wait,"proxy":proxy},
-                 {"Authorization":"Bearer "+FIRE}, timeout=180)
+    _count(FIRECRAWL_CALLS)
+    with FIRECRAWL_SEM:
+        st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",
+                     {"url":url,"formats":[{"type":"json","schema":schema}],"waitFor":wait,"proxy":proxy},
+                     {"Authorization":"Bearer "+FIRE}, timeout=180)
     if st != 200 or not isinstance(r, dict): return None
     data = r.get("data") or {}
     return data if return_meta else data.get("json")   # return_meta -> full data (json + metadata og:image)
@@ -477,36 +486,41 @@ def scrape_ssense(brands, loved_raw, existing=None, per_brand=6, gender="men"):
         "sizesAvailable":{"type":"array","items":{"type":"string"}},"image":{"type":"string"}}}
     existing = existing or set()
     seg = "women" if gender == "women" else "men"
+    def _brand(b):                                                # one brand: listing + per-product size pages
+        res = []
+            slug = re.sub(r"[^a-z0-9]+","-",norm(b)).strip("-")
+            data = firecrawl_scrape(f"https://www.ssense.com/en-us/{seg}/designers/{slug}", LIST, proxy="stealth", wait=12000)
+            prods = (data or {}).get("products") or []
+            fresh = 0
+            for p in prods:
+                if fresh >= per_brand: break
+                title = p.get("name",""); cat = infer_cat(title)
+                if cat not in ALLOWED_CATS: continue
+                if CATEGORY and cat != CATEGORY: continue             # category scan: skip before the pricey product-page scrape
+                purl = (p.get("url") or "").split("?")[0]
+                if not purl: continue
+                if purl in existing: continue                         # already cataloged: the per-product stealth scrape was the credit leak
+                fresh += 1
+                szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000, return_meta=True) or {}   # json (sizes) + metadata (og:image)
+                sizes = " ".join((szdata.get("json") or {}).get("sizesAvailable") or [])
+                if not in_size(cat, sizes, b, gender): continue
+                meta = szdata.get("metadata") or {}
+                og = meta.get("ogImage") or meta.get("og:image") or ""
+                if isinstance(og, list): og = og[0] if og else ""
+                def _valid(u):                                                                # only a real, full ssense image (not a truncated/placeholder url)
+                    u = (u or "").split("?")[0]
+                    return u if (u.startswith("http") and ("res.cloudinary.com/ssenseweb/image/upload/" in u or re.search(r"ssensemedia\.com/images/w_\d", u))) else None
+                img = _valid(og) or _valid((szdata.get("json") or {}).get("image")) or _valid(p.get("image"))
+                if not img: continue                                                          # no usable image -> skip the item entirely
+                m = re.search(r"(\d+)$", purl)
+                res.append({"url":purl,"id":(m.group(1) if m else purl),"platform":"ssense","brand":b,
+                            "title":title,"category":cat,"price":p.get("price"),"size":sizes,
+                            "condition":"new","gender":gender,"image":img})
+        return res
+    from concurrent.futures import ThreadPoolExecutor
     out = []
-    for b in brands[:8]:                                          # light pass to control credits
-        slug = re.sub(r"[^a-z0-9]+","-",norm(b)).strip("-")
-        data = firecrawl_scrape(f"https://www.ssense.com/en-us/{seg}/designers/{slug}", LIST, proxy="stealth", wait=12000)
-        prods = (data or {}).get("products") or []
-        fresh = 0
-        for p in prods:
-            if fresh >= per_brand: break
-            title = p.get("name",""); cat = infer_cat(title)
-            if cat not in ALLOWED_CATS: continue
-            if CATEGORY and cat != CATEGORY: continue             # category scan: skip before the pricey product-page scrape
-            purl = (p.get("url") or "").split("?")[0]
-            if not purl: continue
-            if purl in existing: continue                         # already cataloged: the per-product stealth scrape was the credit leak
-            fresh += 1
-            szdata = firecrawl_scrape(purl, SIZE, proxy="stealth", wait=9000, return_meta=True) or {}   # json (sizes) + metadata (og:image)
-            sizes = " ".join((szdata.get("json") or {}).get("sizesAvailable") or [])
-            if not in_size(cat, sizes, b, gender): continue
-            meta = szdata.get("metadata") or {}
-            og = meta.get("ogImage") or meta.get("og:image") or ""
-            if isinstance(og, list): og = og[0] if og else ""
-            def _valid(u):                                                                # only a real, full ssense image (not a truncated/placeholder url)
-                u = (u or "").split("?")[0]
-                return u if (u.startswith("http") and ("res.cloudinary.com/ssenseweb/image/upload/" in u or re.search(r"ssensemedia\.com/images/w_\d", u))) else None
-            img = _valid(og) or _valid((szdata.get("json") or {}).get("image")) or _valid(p.get("image"))
-            if not img: continue                                                          # no usable image -> skip the item entirely
-            m = re.search(r"(\d+)$", purl)
-            out.append({"url":purl,"id":(m.group(1) if m else purl),"platform":"ssense","brand":b,
-                        "title":title,"category":cat,"price":p.get("price"),"size":sizes,
-                        "condition":"new","gender":gender,"image":img})
+    with ThreadPoolExecutor(max_workers=8) as ex:                 # brands in parallel; Firecrawl gate bounds the fan-out
+        for part in ex.map(_brand, brands[:8]): out += part     # light pass to control credits
     return out
 
 # ---------- rank a new piece by his EYE (Claude vision vs the stored taste rubric) ----------
@@ -584,7 +598,7 @@ def trr_probe():
     errors name every unknown field at once, so whatever is NOT in the error list exists."""
     def call(q, variables=None):
         url = "https://api.therealreal.com/graphql?query=" + urllib.parse.quote(q) + ("&variables=" + urllib.parse.quote(json.dumps(variables)) if variables else "")
-        FIRECRAWL_CALLS[0] += 1
+        _count(FIRECRAWL_CALLS)
         st, r = http("POST", "https://api.firecrawl.dev/v2/scrape", {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
                      {"Authorization": "Bearer " + FIRE}, timeout=180)
         data = (r.get("data") or {}) if isinstance(r, dict) else {}
@@ -592,10 +606,18 @@ def trr_probe():
         return st, (data.get("metadata") or {}).get("statusCode"), raw
     st, sc, raw = call('query{__type(name:"Product"){fields{name type{name kind ofType{name kind}}}} __schema{queryType{fields{name}}}}')
     print(f"PROBE introspection: firecrawl {st}, page {sc}, {len(raw)} chars\n{raw[:12000]}\n")
-    cands = ["availability", "available", "isSold", "sold", "soldOut", "inStock", "status", "state",
-             "inventoryStatus", "isAvailable", "availableForPurchase", "salesStatus", "obsessed", "isOnHold"]
-    st, sc, raw = call("query P($first:Int){products(first:$first){edges{node{id " + " ".join(cands) + "}}}}", {"first": 2})
-    print(f"PROBE candidates: firecrawl {st}, page {sc}, {len(raw)} chars\n{raw[:6000]}")
+    # probe 1 found Product.availability exists; now: scalar or object, and what values does it take?
+    from collections import Counter
+    st, sc, raw = call("query P($first:Int,$where:ProductFilters,$sortBy:SortBy){products(first:$first,where:$where,sortBy:$sortBy){edges{node{id sku availability}}}}",
+                       {"first": 60, "where": {"buckets": {"taxonsPermalink": ["men/clothing/outerwear"]}}, "sortBy": "NEWEST"})
+    j = _trr_json(raw)
+    if j and j.get("data"):
+        vals = Counter(json.dumps(e["node"].get("availability")) for e in j["data"]["products"]["edges"])
+        print(f"PROBE availability (scalar) over 60 newest men's outerwear: {dict(vals)}")
+    else:
+        print(f"PROBE availability scalar: firecrawl {st}, page {sc}\n{raw[:1500]}")
+        st, sc, raw = call("query P($first:Int){products(first:$first){edges{node{id availability{__typename}}}}}", {"first": 2})
+        print(f"PROBE availability object: firecrawl {st}, page {sc}\n{raw[:1500]}")
 
 def main():
     if os.environ.get("TRR_PROBE"):
@@ -606,6 +628,21 @@ def main():
     st, taste_rows = sb("GET", "/rest/v1/taste?select=user_id,payload")
     taste_rows = taste_rows if isinstance(taste_rows, list) else []
     payload = (taste_rows or [{}])[0].get("payload", {}) or {}
+    # manual scan from the app: the requester is the newest conductor_dispatches row. Rank the scan
+    # cap by THEIR taste and tell the rebuild step to rebuild only their feed (11 min -> ~1 min).
+    requester = None
+    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+        st_d, disp = sb("GET", "/rest/v1/conductor_dispatches?select=user_id,created_at&order=created_at.desc&limit=1")
+        if st_d == 200 and isinstance(disp, list) and disp:
+            from datetime import datetime, timezone
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(disp[0]["created_at"].replace("Z", "+00:00"))).total_seconds()
+            if age < 1800: requester = disp[0]["user_id"]
+    if requester:
+        p_req = next(((t.get("payload") or {}) for t in taste_rows if t.get("user_id") == requester), None)
+        if p_req: payload = p_req
+        if os.environ.get("GITHUB_ENV"):
+            with open(os.environ["GITHUB_ENV"], "a") as fh: fh.write(f"REBUILD_USER={requester}\n")
+        print(f"manual scan for user {requester[:8]}: ranked by their taste, rebuild scoped to them")
     loved_raw, seen_b = [], set()
     for t in taste_rows:
         for b in ((t.get("payload") or {}).get("brands", {}) or {}).get("loved", []):
@@ -654,11 +691,22 @@ def main():
     genders = [GENDER] if GENDER in ("men", "women") else sorted(g for g in ("men", "women") if g in user_genders)
     print(f"scanning genders: {genders}")
 
-    found = []
+    # every source x gender runs concurrently — they were sequential, ~25 min of wall clock that
+    # was almost all proxy latency. Firecrawl fan-out is still bounded by FIRECRAWL_SEM.
+    from concurrent.futures import ThreadPoolExecutor
+    jobs = []
     for g in genders:
-        if "grailed" in SOURCES:              found += scrape_grailed(todays, loved, g)        # Grailed Algolia (no Apify)
-        if "therealreal" in SOURCES and FIRE: found += scrape_trr(loved, paid_raw, g)          # TRR GraphQL via Firecrawl
-        if "ssense" in SOURCES and FIRE:      found += scrape_ssense(paid_today, loved_raw, existing, gender=g)
+        if "grailed" in SOURCES:              jobs.append((f"grailed {g}", lambda g=g: scrape_grailed(todays, loved, g)))        # Grailed Algolia (no Apify)
+        if "therealreal" in SOURCES and FIRE: jobs.append((f"trr {g}",     lambda g=g: scrape_trr(loved, paid_raw, g)))          # TRR GraphQL via Firecrawl
+        if "ssense" in SOURCES and FIRE:      jobs.append((f"ssense {g}",  lambda g=g: scrape_ssense(paid_today, loved_raw, existing, gender=g)))
+    found = []
+    def _run(job):
+        name, fn = job; t0 = _time.time()
+        try: out = fn()
+        except Exception as e: print(f"  {name} FAILED: {e}"); out = []
+        print(f"  {name}: {len(out)} items in {round(_time.time() - t0)}s"); return out
+    with ThreadPoolExecutor(max_workers=max(1, len(jobs))) as ex:
+        for out in ex.map(_run, jobs): found += out
     print(f"scraped {len(found)} raw items")
 
     # cleared stays cleared (Charles 2026-09-22): a scan re-finding a dismissed listing no longer
@@ -680,6 +728,12 @@ def main():
             print(f"  top-up +{len(more)} -> {len(rows)}/{MIN_NEW} new")
     print(f"{len(rows)} NEW in-size items after filtering")
 
+    # manual scans cap the insert at MIN_NEW — cap the CANDIDATES first (3x, by base score) so the
+    # vision pass doesn't attribute 800 pieces to keep 50 (2026-09-23: ~6 min + ~$3 per manual scan)
+    if MIN_NEW and len(rows) > 3 * MIN_NEW:
+        rows.sort(key=lambda r: -(r.get("base_score") or 0))
+        rows = rows[:3 * MIN_NEW]
+        print(f"pre-cap: attributing the top {len(rows)} candidates by base score for a target of {MIN_NEW}")
     # ---- stage 1: ONE shared attribute look per new item. User-agnostic — every user's ranking
     # becomes arithmetic over these; replaces the old per-user vision pass at scrape time. ----
     if ANTHROPIC_KEY and rows:
@@ -689,7 +743,7 @@ def main():
             if a is None:
                 a = taste_model.extract_attrs(ANTHROPIC_KEY, r.get("image"), r.get("title") or "")  # one retry
             if a is not None: r["attrs"] = a
-        with ThreadPoolExecutor(max_workers=8) as ex:
+        with ThreadPoolExecutor(max_workers=16) as ex:
             list(ex.map(_ax, rows))
         print(f"stage-1 attributes extracted for {sum(1 for r in rows if r.get('attrs'))}/{len(rows)} new items")
     elif rows:
@@ -714,13 +768,9 @@ def main():
     # MIN_NEW is a TARGET, not just a floor: the top-up loop pulls brands until we reach it,
     # and here we cap at exactly N — his best N by taste, or the newest N on a raw scan.
     if MIN_NEW and len(rows) > MIN_NEW:
-        if not NO_VISION and not CATEGORY:
-            # general rated scan: seasonal per-category slots stop jacket-domination
-            rows = season_allocate(rows, MIN_NEW)
-        else:
-            if not NO_VISION:
-                rows.sort(key=lambda r: -(r.get("_s1", r.get("base_score") or 0)))
-            rows = rows[:MIN_NEW]
+        if not NO_VISION:                              # taste rank only — no seasonal slots (all-season shopper)
+            rows.sort(key=lambda r: -(r.get("_s1", r.get("base_score") or 0)))
+        rows = rows[:MIN_NEW]
         print(f"target {MIN_NEW}: kept {len(rows)} of what was found")
 
     for r in rows: r.pop("_s1", None)              # rank-time only — never stored
