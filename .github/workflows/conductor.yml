@@ -37,6 +37,9 @@ on:
       trr_probe:
         description: 'schema probe only (no scan, no rebuild): introspect TRR GraphQL'
         default: ''
+      recheck:
+        description: 're-check stored TRR listings still live in feeds (nightly runs always do)'
+        default: ''
 
 # never let two runs stomp each other
 concurrency:
@@ -77,6 +80,14 @@ jobs:
           GENDER:         ${{ github.event.inputs.gender || '' }}
           TRR_PROBE:      ${{ github.event.inputs.trr_probe || '' }}
         run: python pipeline/conductor.py
+
+      - name: re-check TRR listings still live in feeds   # nightly: sold pieces vanish before the rebuild
+        if: ${{ !cancelled() && github.event.inputs.trr_probe == '' && (github.event_name == 'schedule' || github.event.inputs.recheck == '1') }}
+        env:
+          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          FIRECRAWL_KEY:       ${{ secrets.FIRECRAWL_KEY }}
+        run: python pipeline/recheck_trr.py
 
       - name: rebuild every user's feed
         if: ${{ !cancelled() && github.event.inputs.trr_probe == '' }}
