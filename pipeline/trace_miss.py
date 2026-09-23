@@ -28,10 +28,11 @@ def get(path, rng=None):
     if rng: h.update({"Range-Unit": "items", "Range": rng})
     return json.load(urllib.request.urlopen(urllib.request.Request(U + path, headers=h)))
 
+_PK = {"catalog": "url", "signals": "url", "user_scores": "url", "taste": "user_id", "feeds": "user_id"}  # stable paging: Range windows without ORDER BY overlap/skip rows as the heap changes (2026-09-23 incident)
 def fetch_all(table, sel, qs=""):
     rows, start = [], 0
     while True:
-        part = get(f"/rest/v1/{table}?select={sel}{qs}", f"{start}-{start+999}")
+        part = get(f"/rest/v1/{table}?select={sel}{qs}&order={_PK.get(table, 'url')}", f"{start}-{start+999}")
         rows += part
         if len(part) < 1000: break
         start += 1000

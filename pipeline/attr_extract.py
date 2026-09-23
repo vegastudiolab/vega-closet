@@ -51,10 +51,11 @@ def sb(method, path, body=None, extra=None):
     if extra: h.update(extra)
     return http(method, SB_URL + path, body, h)
 
+_PK = {"catalog": "url", "signals": "url", "user_scores": "url", "taste": "user_id", "feeds": "user_id"}  # stable paging: Range windows without ORDER BY overlap/skip rows as the heap changes (2026-09-23 incident)
 def fetch_all(table, select, qs=""):
     rows, start = [], 0
     while True:
-        st, part = sb("GET", f"/rest/v1/{table}?select={select}{qs}", None,
+        st, part = sb("GET", f"/rest/v1/{table}?select={select}{qs}&order={_PK.get(table, 'url')}", None,
                       {"Range-Unit": "items", "Range": f"{start}-{start+999}"})
         if st not in (200, 206) or not isinstance(part, list): break
         rows += part

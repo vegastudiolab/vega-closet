@@ -538,10 +538,11 @@ def vision_score(image_url, brief):
     return None
 
 # ---------- main ----------
+_PK = {"catalog": "url", "signals": "url", "user_scores": "url", "taste": "user_id", "feeds": "user_id"}  # stable paging: Range windows without ORDER BY overlap/skip rows as the heap changes (2026-09-23 incident)
 def fetch_all(table, select):
     rows=[]; start=0; step=1000
     while True:
-        st,part = sb("GET", f"/rest/v1/{table}?select={select}", None, {"Range-Unit":"items","Range":f"{start}-{start+step-1}"})
+        st,part = sb("GET", f"/rest/v1/{table}?select={select}&order={_PK.get(table, 'url')}", None, {"Range-Unit":"items","Range":f"{start}-{start+step-1}"})
         if st not in (200,206): print("fetch fail", table, st); break
         rows += part
         if len(part) < step: break
