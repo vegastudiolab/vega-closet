@@ -21,7 +21,7 @@ def gql(query):
     url = "https://api.therealreal.com/graphql?query=" + urllib.parse.quote(query)
     C._count(C.FIRECRAWL_CALLS)
     with C.FIRECRAWL_SEM:
-        st, r = C.http("POST", "https://api.firecrawl.dev/v2/scrape", {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
+        st, r = C.http("POST", "https://api.firecrawl.dev/v2/scrape", {"url": url, "formats": ["rawHtml"], "proxy": "stealth", "maxAge": 0},
                        {"Authorization": "Bearer " + C.FIRE}, timeout=180)
     data = (r.get("data") or {}) if isinstance(r, dict) else {}
     sc = (data.get("metadata") or {}).get("statusCode")

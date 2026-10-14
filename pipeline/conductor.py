@@ -415,7 +415,7 @@ def trr_graphql(variables):
     _count(FIRECRAWL_CALLS)
     with FIRECRAWL_SEM:
         st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",                 # Firecrawl stealth clears TRR's PerimeterX wall
-                     {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
+                     {"url": url, "formats": ["rawHtml"], "proxy": "stealth", "maxAge": 0},
                      {"Authorization": "Bearer " + FIRE}, timeout=180)
     data = (r.get("data") or {}) if isinstance(r, dict) else {}
     sc = (data.get("metadata") or {}).get("statusCode")
@@ -484,7 +484,7 @@ def firecrawl_scrape(url, schema, proxy="auto", wait=9000, return_meta=False):
     _count(FIRECRAWL_CALLS)
     with FIRECRAWL_SEM:
         st, r = http("POST", "https://api.firecrawl.dev/v2/scrape",
-                     {"url":url,"formats":[{"type":"json","schema":schema}],"waitFor":wait,"proxy":proxy},
+                     {"url":url,"formats":[{"type":"json","schema":schema}],"waitFor":wait,"proxy":proxy,"maxAge":0},
                      {"Authorization":"Bearer "+FIRE}, timeout=180)
     if st != 200 or not isinstance(r, dict): return None
     data = r.get("data") or {}
@@ -616,7 +616,7 @@ def trr_probe():
     def call(q, variables=None):
         url = "https://api.therealreal.com/graphql?query=" + urllib.parse.quote(q) + ("&variables=" + urllib.parse.quote(json.dumps(variables)) if variables else "")
         _count(FIRECRAWL_CALLS)
-        st, r = http("POST", "https://api.firecrawl.dev/v2/scrape", {"url": url, "formats": ["rawHtml"], "proxy": "stealth"},
+        st, r = http("POST", "https://api.firecrawl.dev/v2/scrape", {"url": url, "formats": ["rawHtml"], "proxy": "stealth", "maxAge": 0},
                      {"Authorization": "Bearer " + FIRE}, timeout=180)
         data = (r.get("data") or {}) if isinstance(r, dict) else {}
         raw = re.sub(r"<[^>]+>", "", data.get("rawHtml") or "")
