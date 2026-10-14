@@ -344,6 +344,15 @@ def grailed_canon_brands(raw_list):
     return out
 
 def scrape_grailed(brands, loved, gender="men"):
+    if len(brands) > 30:
+        # keyword scans search the whole wall: Algolia returns nothing past ~30 OR'd designers in
+        # one facet group (measured 2026-09-25), so chunk and merge
+        out, seen_ids = [], set()
+        for i in range(0, len(brands), 30):
+            for h in scrape_grailed(brands[i:i+30], loved, gender):
+                if h["id"] not in seen_ids: seen_ids.add(h["id"]); out.append(h)
+        print(f"  grailed {gender}: {len(out)} listings across {len(brands)} brands in {(len(brands) + 29) // 30} chunks")
+        return out
     dept = "womenswear" if gender == "women" else "menswear"
     sizes = grailed_size_facet_acc(gender) if CATEGORY == "accessories" else grailed_size_facet(gender)
     facet = [["designers.name:" + b for b in brands], sizes, ["condition:is_new", "condition:is_gently_used"], ["department:" + dept]]
@@ -571,6 +580,8 @@ def fetch_all(table, select):
     return rows
 
 # sources mislabel accessories as clothing ("Leather Belt" under tops) — retag by title
+_KIDS = re.compile(r"\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress)\b", re.I)
+_JKT  = re.compile(r"\b(?:track|coach|bomber|denim|leather|puffer|shirt|work|chore|trucker|varsity|harrington) jackets?\b|\bwindbreaker\b|\banorak\b", re.I)
 _ACC = re.compile(r"\b(belt|wallet|card ?holder|scarf|beanie|keychain|sunglasses|bracelet|necklace|ring|earring)s?\b", re.I)
 _ACC_NOT = re.compile(r"belted|belt(ed)?[- ]bag|ring[- ]?(collar|zip)", re.I)
 
@@ -581,8 +592,11 @@ def filter_new(found, known, loved):
         if not url or not it.get("brand") or not str(it.get("image","")).startswith("http"): continue  # reject data:/placeholder images
         if url in known or url in newurls: continue                # only genuinely new
         title = it.get("title") or ""
+        if _KIDS.search(title): continue                            # children's sizes never fit anyone here
         if _ACC.search(title) and not _ACC_NOT.search(title):
             it["category"] = "accessories"                          # belts etc. tagged as tops -> retag, then gate below
+        if it["category"] == "tops" and _JKT.search(title):
+            it["category"] = "outerwear"                            # sources file track/coach jackets under tops
         cat = it["category"]
         if cat not in ALLOWED_CATS: continue
         # gender: trust the scraper's tag; firm it up from the title (catches source cross-leaks)
@@ -654,13 +668,21 @@ def main():
         if os.environ.get("GITHUB_ENV"):
             with open(os.environ["GITHUB_ENV"], "a") as fh: fh.write(f"REBUILD_USER={requester}\n")
         print(f"manual scan for user {requester[:8]}: ranked by their taste, rebuild scoped to them")
+    # scope (audit 2026-10-14): a MANUAL scan is one person's scan — their brands, their sizes.
+    # The cross-user union sent 38 of the 47 denim jackets a search stored straight to
+    # size-retirement, and half of the 24 random brands weren't even theirs. The nightly keeps
+    # the union so the shared catalog serves everyone.
+    scope_rows = [t for t in taste_rows if t.get("user_id") == requester] if requester else taste_rows
+    if requester and not any(((t.get("payload") or {}).get("sizes") and (t.get("payload") or {}).get("brands", {}).get("loved")) for t in scope_rows):
+        scope_rows = taste_rows                       # mid-onboarding requester: nothing to scope by yet
     loved_raw, seen_b = [], set()
-    for t in taste_rows:
+    for t in scope_rows:
         for b in ((t.get("payload") or {}).get("brands", {}) or {}).get("loved", []):
             if norm(b) not in seen_b:
                 seen_b.add(norm(b)); loved_raw.append(b)
     loved = set(norm(b) for b in loved_raw)
-    load_union_sizes(taste_rows)
+    load_union_sizes(scope_rows)
+    if scope_rows is not taste_rows: print(f"  scope: {len(loved_raw)} loved brands + sizes of user {requester[:8]} only")
     if not loved_raw:
         print("no loved brands found — aborting"); return
     # brands: explicit override (on-demand / testing) OR a rotating slice to bound daily cost
@@ -673,10 +695,12 @@ def main():
         print(f"brand override: {typed} -> {todays}")
         if not todays:
             print("none of the requested brands exist on grailed — aborting instead of scanning randoms"); return
+    elif QUERY:
+        todays = list(loved_raw)                      # a keyword search covers the WHOLE wall (Algolia is free; chunked below), not a random 24
     else:
         n = min(BRANDS_PER_RUN, len(loved_raw))
         todays = random.sample(loved_raw, n)          # random slice each run so repeat scans hit fresh brands
-    print(f"loved brands: {len(loved_raw)} | this run scrapes {len(todays)}: {todays[:6]}{'...' if len(todays)>6 else ''}")
+    print(f"loved brands: {len(loved_raw)} | this run scrapes {len(todays)}: {todays[:6]}{'...' if len(todays)>6 else ''}" + (f" | query: {QUERY!r}" if QUERY else ""))
     print(f"sources: {SOURCES} | max/brand: {MAX_PER_BRAND}")
 
     existing = set(r["url"] for r in fetch_all("catalog", "url"))
@@ -752,7 +776,17 @@ def main():
         print(f"pre-cap: attributing the top {len(rows)} candidates by base score for a target of {MIN_NEW}")
     # ---- stage 1: ONE shared attribute look per new item. User-agnostic — every user's ranking
     # becomes arithmetic over these; replaces the old per-user vision pass at scrape time. ----
-    if ANTHROPIC_KEY and rows:
+    # Lazy (audit 2026-10-14): the nightly attributed ~7,900 items a week while 908 could reach
+    # Charles and 471 the other active user — the rest served feeds nobody opened. Only pieces an
+    # ACTIVE user (tapped in the last 14 days) could see get the look tonight; a dormant user who
+    # comes back has their reachable backlog attributed by their own rebuild.
+    rows_attr = rows
+    if rows and not requester:
+        reach = active_reach(taste_rows)
+        if reach is not None:
+            rows_attr = [r for r in rows if any(p(r) for p in reach)]
+            print(f"lazy attrs: {len(rows_attr)} of {len(rows)} new items can reach an active user")
+    if ANTHROPIC_KEY and rows_attr:
         from concurrent.futures import ThreadPoolExecutor
         def _ax(r):
             a = taste_model.extract_attrs(ANTHROPIC_KEY, r.get("image"), r.get("title") or "")
@@ -760,7 +794,7 @@ def main():
                 a = taste_model.extract_attrs(ANTHROPIC_KEY, r.get("image"), r.get("title") or "")  # one retry
             if a is not None: r["attrs"] = a
         with ThreadPoolExecutor(max_workers=16) as ex:
-            list(ex.map(_ax, rows))
+            list(ex.map(_ax, rows_attr))
         print(f"stage-1 attributes extracted for {sum(1 for r in rows if r.get('attrs'))}/{len(rows)} new items")
     elif rows:
         print("no ANTHROPIC_API_KEY — items stored without attributes (title-based fallback ranking)")
@@ -800,12 +834,53 @@ def main():
         print(f"  inserted {inserted}/{len(rows)}")
     if inserted < len(rows): print(f"WARNING: only {inserted} of {len(rows)} stored — see insert fail above")
     print("CONDUCTOR DONE — new items:", inserted)
+    if requester and (QUERY or CATEGORY or override):
+        # results shelf: the rebuild step pins exactly these pieces at the top of the requester's
+        # feed as "your search", instead of folding them into the regular feed where the diversity
+        # order scatters them (2026-09-25: 7 denim jackets spread between card 5 and card 45)
+        label = " ".join(x for x in (QUERY, CATEGORY, ("brands: " + override) if override else "") if x).strip()
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scan_result.json"), "w") as fh:
+                json.dump({"user": requester, "query": label, "urls": [r["url"] for r in rows[:inserted]], "at": TODAY}, fh)
+            print(f"  results shelf: {inserted} pieces for {label!r}")
+        except Exception as e:
+            print("  results shelf not written:", e)
     taste_model.write_run_record(SB_URL, SB_SECRET, "scan", {
         "sources": SOURCES, "genders": genders, "brands_scanned": len(todays),
-        "found": len(found), "new": inserted,
+        "found": len(found), "new": inserted, "query": QUERY or None, "requester": (requester or "")[:8] or None,
         "firecrawl_calls": FIRECRAWL_CALLS[0], "apify_calls": APIFY_CALLS[0],
         "duration_s": round(_time.time() - _T0),
     })
+
+def active_reach(taste_rows, days=14):
+    """Predicates for 'could this new item reach an ACTIVE user's feed' (gender + sizes; the brand
+    wall is left open so gems stay possible). None = can't tell (no signals table access) ->
+    attribute everything, like before."""
+    from datetime import datetime, timezone, timedelta
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    st, rows_ = sb("GET", f"/rest/v1/signals?select=user_id&created_at=gte.{urllib.parse.quote(since)}&limit=20000")
+    if st != 200 or not isinstance(rows_, list): return None
+    active = {r["user_id"] for r in rows_}
+    preds = []
+    for t in taste_rows:
+        if t.get("user_id") not in active: continue
+        p = t.get("payload") or {}
+        g = norm(p.get("gender")) or "men"
+        sz = p.get("sizes") or {}
+        if not sz:
+            preds.append(lambda r, g=g: (norm(r.get("gender")) or "men") in (g, "unisex"))   # size-less users see their whole gender
+            continue
+        rx = {}
+        for cat_, toks in (("tops", sz.get("tops")), ("outerwear", sz.get("outerwear") or sz.get("tops")), ("bottoms", sz.get("waist")),
+                           ("footwear", sz.get("shoes")), ("dresses", sz.get("dresses") or sz.get("tops")), ("skirts", sz.get("skirts") or sz.get("waist"))):
+            rx[cat_] = _size_re({norm(x) for x in (toks or []) if x})
+        def pred(r, g=g, rx=rx):
+            if (norm(r.get("gender")) or "men") not in (g, "unisex"): return False
+            if r.get("category") == "accessories": return True
+            x = rx.get(r.get("category")); s = norm(r.get("size"))
+            return bool(x and s and x.search(s))
+        preds.append(pred)
+    return preds
 
 def mark_sold(urls):
     n = 0

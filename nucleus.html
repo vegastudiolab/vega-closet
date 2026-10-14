@@ -39,6 +39,10 @@
   .stat span { font-size:8.5px; letter-spacing:0.18em; text-transform:uppercase; color:var(--dim); }
   .stat small { display:block; font-size:9.5px; color:var(--dim); margin-top:4px; }
   .stat.acc b { color:var(--acc); } .stat.warn b { color:var(--warn); } .stat.bad b { color:var(--bad); }
+  .alerts { margin:0 0 16px; }
+  .alert { padding:8px 10px; border:1px solid var(--bad); color:var(--bad); margin-bottom:6px; font-size:12px; }
+  .alert.warn { border-color:var(--warn); color:var(--warn); }
+  .alerts.ok { font-size:11px; color:var(--dim); letter-spacing:0.06em; text-transform:uppercase; }
   table { width:100%; border-collapse:collapse; font-size:11px; }
   th { font-size:8.5px; letter-spacing:0.16em; text-transform:uppercase; color:var(--dim); font-weight:400;
        text-align:right; padding:6px 8px; border-bottom:1px solid var(--line); cursor:pointer; white-space:nowrap; user-select:none; }
@@ -179,6 +183,10 @@ function render(d) {
   const starvedCls = p.feeds_starved > 0 ? 'bad' : 'acc';
   const activeCls = p.active_7d <= Math.max(1, Math.round(p.users_total * 0.1)) ? 'warn' : 'acc';
   let h = '';
+  const al = d.alerts || [];
+  h += al.length
+    ? `<div class="alerts">${al.map(a => `<div class="alert ${esc(a.level)}">${esc(a.text)}</div>`).join('')}</div>`
+    : `<div class="alerts ok">all clear · nightly ran · scans dispatch · AI calls healthy</div>`;
 
   h += `<h2>pulse</h2><div class="pulse">
     <div class="stat acc"><b>${fmt(p.users_total)}</b><span>users</span><small>${fmt(p.users_tapped)} have tapped</small></div>

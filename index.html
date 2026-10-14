@@ -100,6 +100,14 @@
   .sec-h h2 { font-family:var(--serif); font-size:25px; font-weight:400; text-transform:lowercase; }
   .sec-h .cnt { font-size:11px; font-weight:500; background:var(--acc); border:1px solid var(--line); padding:1px 6px; color:var(--ink); }
   .sec-sub { font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--dim); margin-bottom:12px; }
+  /* the tray: each section folds its weaker half behind one button (never picks or steals) */
+  .tray-btn { margin-left:auto; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; background:transparent;
+              border:1px solid var(--line); color:var(--dim); padding:3px 9px; cursor:pointer; font-family:inherit; }
+  .tray-btn:hover { color:var(--ink); border-color:var(--ink); }
+  .tray-btn[hidden] { display:none; }
+  /* results shelf: what a keyword / category / brand scan found, pinned on top until the nightly */
+  .section[data-key="search"] { border:1px solid var(--ink); padding:12px 12px 4px; margin-bottom:34px; }
+  .section[data-key="search"] .sec-h h2 { font-style:italic; }
 
   /* ---- cards ---- */
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:12px; }
@@ -906,7 +914,7 @@
       const img = safeUrl(it.image), href = safeUrl(it.url);
       const plat = esc(platLabel[it.platform]||it.platform);
       const searchText = esc(((it.brand||"")+" "+(it.title||"")+" "+((it.reasons||[]).join(" "))).toLowerCase());
-      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}" data-carted="${it.isCarted?1:0}" data-pick="${it.pick?1:0}" data-steal="${it.steal?1:0}" data-search="${searchText}">
+      return `<div class="card" data-id="${esc(it.id)}" data-url="${encodeURIComponent(it.url||'')}" data-platform="${esc(it.platform)}" data-cat="${esc(it.category)}" data-sz="${esc(it.sz||'other')}" data-price="${Number(it.price)||0}" data-archived="${it.isArchived?1:0}" data-liked="${it.isLiked?1:0}" data-carted="${it.isCarted?1:0}" data-pick="${it.pick?1:0}" data-steal="${it.steal?1:0}" data-tail="${it.tail?1:0}" data-search="${searchText}">
         <div class="imgwrap">
           ${badge}
           <img src="${img}" alt="${esc(it.title)}" loading="lazy" referrerpolicy="no-referrer" decoding="async"
@@ -931,11 +939,16 @@
     }
 
     document.getElementById("sections").innerHTML = (F.sections||[]).map(sec => `
-      <div class="section">
-        <div class="sec-h"><h2>${esc(sec.title)}</h2><span class="cnt">${sec.items.length}</span></div>
+      <div class="section" data-key="${esc(sec.key||"")}">
+        <div class="sec-h"><h2>${esc(sec.title)}</h2><span class="cnt">${sec.items.length}</span><button class="tray-btn" type="button" hidden></button></div>
         <div class="sec-sub">${esc(sec.subtitle||"")}</div>
         <div class="grid">${sec.items.map(card).join("")}</div>
       </div>`).join("");
+    // the tray button folds / unfolds the section's weaker half; counts refresh through applyFilters
+    document.getElementById("sections").addEventListener("click", e=>{
+      const tb = e.target.closest(".tray-btn"); if (!tb) return;
+      tb.closest(".section").classList.toggle("tray-open"); applyFilters();
+    });
 
     // Build ITEM_OF here (before filter setup) so applyFilters() can reference it
     const ITEM_OF = {};
@@ -1019,17 +1032,32 @@
     }
     function applyFilters(){
       const q = SEARCH_Q.toLowerCase().trim();
+      const toks = q ? q.split(/\s+/).filter(Boolean) : [];          // every word must appear, any order
       let shown = 0;
       const visibleCards = [];
       cards().forEach(c=>{
-        const textOk = !q || (c.dataset.search||"").includes(q);   // precomputed at render — no per-keystroke joins
-        const v = textOk && matchExcept(c,null);
+        const s = c.dataset.search||"";                                // precomputed at render — no per-keystroke joins
+        const textOk = !toks.length || toks.every(t=>s.includes(t));
+        const sec = c.closest(".section");
+        const trayOk = c.dataset.tail!=="1" || (sec && sec.classList.contains("tray-open"));
+        const base = textOk && matchExcept(c,null);
+        const v = base && trayOk;
         c.style.display = v ? "" : "none";
+        c.dataset.folded = (base && !trayOk) ? "1" : "0";              // hidden only by the tray fold
         if(v){ shown++; visibleCards.push(c); }
       });
       document.querySelectorAll(".section").forEach(sec=>{
-        const vis = [...sec.querySelectorAll(".card")].filter(c=>c.style.display!=="none").length;
-        sec.style.display = vis ? "" : "none";
+        const all = [...sec.querySelectorAll(".card")];
+        const vis = all.filter(c=>c.style.display!=="none").length;
+        const folded = all.filter(c=>c.dataset.folded==="1").length;
+        const open = sec.classList.contains("tray-open");
+        const tb = sec.querySelector(".tray-btn");
+        if (tb){
+          const n = open ? all.filter(c=>c.dataset.tail==="1" && c.style.display!=="none").length : folded;
+          tb.hidden = !(n > 0);
+          tb.textContent = open ? ("fold " + n + " back") : ("+ " + n + " more");
+        }
+        sec.style.display = (vis || folded) ? "" : "none";
         const cnt = sec.querySelector(".cnt"); if (cnt) cnt.textContent = vis;
       });
       applySort(visibleCards);
@@ -1234,7 +1262,9 @@
       morePop.classList.remove("open");
       // only un-acted feed items — never anything loved or passed. This dismisses from the VIEW
       // (adds to taste.dismissedUrls); it never touches catalog rows or signals, so no data is lost.
-      const toClear = cards().filter(c => c.dataset.liked==="0" && c.dataset.archived==="0");
+      // folded tray cards stay: he hasn't seen them, so clearing them would train the model on nothing
+      const toClear = cards().filter(c => c.dataset.liked==="0" && c.dataset.archived==="0"
+                                       && !(c.dataset.tail==="1" && !c.closest(".section").classList.contains("tray-open")));
       const urls = toClear.map(c => decodeURIComponent(c.dataset.url||"")).filter(Boolean);
       if (!urls.length){ ok.textContent = "nothing to clear"; setTimeout(()=>{ ok.textContent=""; },2500); return; }
       ok.textContent = "clearing "+urls.length+"…";
@@ -1488,6 +1518,8 @@
         try {
           const {data:f}=await sb.from('feeds').select('built_at').single();
           if (f && f.built_at && f.built_at!==before){
+            // a keyword / category / brand scan comes back as its own shelf on top — land there
+            try { const sc = JSON.parse(localStorage.getItem("vegaCloset.scan")||"null"); if (sc && sc.shelf) sessionStorage.setItem("vegaCloset.shelf","1"); } catch(e){}
             clearInterval(SCAN_IV); SCAN_IV=null; scanDone(true);
             ok.textContent="fresh picks in — refreshing"; setTimeout(reloadKeepingContext,1400); return;
           }
@@ -1520,7 +1552,7 @@
       if (error){ ok.textContent="couldn't start scan"; scanDone(false); return; }
       if (disp === "cooldown"){ ok.textContent="you've fired a few scans in a row — give it a couple minutes"; scanDone(false); return; }
       // survives the app being closed mid-scan; boot resumes the wait
-      try{ localStorage.setItem("vegaCloset.scan", JSON.stringify({ t0, before, est })); }catch(e){}
+      try{ localStorage.setItem("vegaCloset.scan", JSON.stringify({ t0, before, est, shelf: !!(query || brands || (cat && cat!=="all")) })); }catch(e){}
 
       // pg_net fires and forgets — confirm GitHub actually accepted the dispatch (204),
       // otherwise a dead token / renamed workflow means we'd poll forever on "started".
@@ -1560,10 +1592,16 @@
     try {
       const rs = JSON.parse(sessionStorage.getItem("vegaCloset.restore")||"null");
       sessionStorage.removeItem("vegaCloset.restore");
+      const toShelf = sessionStorage.getItem("vegaCloset.shelf") === "1";
+      sessionStorage.removeItem("vegaCloset.shelf");
       if (rs){
         if (rs.view) Object.assign(VIEW, rs.view);
         if (rs.q){ SEARCH_Q = rs.q; searchIn.value = rs.q; searchBox.classList.add("has-text"); }
-        if (rs.y) setTimeout(()=>window.scrollTo(0, rs.y), 80);
+        if (rs.y && !toShelf) setTimeout(()=>window.scrollTo(0, rs.y), 80);
+      }
+      if (toShelf){
+        const sh = document.querySelector('.section[data-key="search"]');
+        if (sh) setTimeout(()=>sh.scrollIntoView({ behavior:"smooth", block:"start" }), 150);
       }
     } catch(e){}
 

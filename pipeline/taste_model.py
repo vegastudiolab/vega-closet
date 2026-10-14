@@ -7,7 +7,7 @@
 # against their personal rubric (visualBrief) — same judgment quality as the old system,
 # fixed small cost per rebuild regardless of catalog or user count.
 # Imported by conductor.py (extraction + scan-cap ranking) and build_feed_cloud.py (fit + rank).
-import json, math, random, urllib.request, urllib.error
+import json, math, random, re, urllib.request, urllib.error
 
 # ---- usage ledger: every Anthropic call records tokens + outcome here; the pipeline scripts
 # flush it into a per-run record for the Nucleus costs tab. Keyed by stage for cost attribution.
@@ -135,8 +135,14 @@ def vision_fit(anthropic_key, image_url, brief):
 
 # ---- featurization + logistic model (pure stdlib; identical in fit and serve) ----
 def _norm_one(val):
-    # tolerate schema drift: single-value fields sometimes arrive as 1-element lists
+    # tolerate schema drift: single-value fields sometimes arrive as 1-element lists, or as a
+    # JSON-encoded list/object STRING ('["contemporary"]', '{"enum": "mid"}' — 20% of rows on
+    # 2026-10-14), which split one feature into two. Reduce all of them to the bare token.
     if isinstance(val, list): val = val[0] if val else None
+    if isinstance(val, dict): val = next(iter(val.values()), None) if val else None
+    if isinstance(val, str) and val[:1] in "[{":
+        m = re.findall(r"[a-z0-9][a-z0-9\-]*", val.lower())
+        val = next((t for t in m if t not in ("enum", "value", "type")), None)
     return val if isinstance(val, str) else None
 
 def featurize(attrs, brand, price, category, brand_rate):

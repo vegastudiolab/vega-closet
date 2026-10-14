@@ -231,8 +231,42 @@ def main():
                  for r in runs[:40]],
     }
 
+    # ---- alerts (Phase 3 lite): the things that broke silently before anyone looked. The
+    # 2026-10-14 audit found manual scans dead for days — a GitHub token had expired inside
+    # run_conductor and every "scan now" quietly went nowhere.
+    alerts = []
+    try:
+        import urllib.request as _ur
+        st_d, disp = http("GET", "/rest/v1/conductor_dispatches?select=user_id,created_at&created_at=gte." + _ur.quote(d1, safe="") + "&order=created_at.desc")
+        if st_d != 200 or not isinstance(disp, list):
+            raise RuntimeError(f"dispatch query HTTP {st_d}")
+        if disp:
+            # the repo is public: GitHub lists workflow runs without a token
+            req = _ur.Request("https://api.github.com/repos/vegastudiolab/vega-closet/actions/workflows/conductor.yml/runs?event=workflow_dispatch&per_page=30",
+                              headers={"User-Agent": "trm-nucleus", "Accept": "application/vnd.github+json"})
+            with _ur.urlopen(req, timeout=30) as r: gh = json.loads(r.read().decode())
+            runs_d = [x for x in gh.get("workflow_runs", []) if (x.get("created_at") or "") >= d1]
+            if len(runs_d) < len(disp):
+                alerts.append({"level": "bad", "key": "dispatch", "text": f"manual scans not starting: {len(disp)} scan request(s) in 24h, {len(runs_d)} reached GitHub — the token inside run_conductor is probably dead"})
+    except Exception as e:
+        alerts.append({"level": "warn", "key": "dispatch-check", "text": f"couldn't verify manual scan dispatches: {str(e)[:80]}"})
+    scans = sorted((r for r in runs if r.get("kind") == "scan"), key=lambda r: r.get("at") or "", reverse=True)
+    last_scan = (scans[0].get("at") or "") if scans else ""
+    h36 = (NOW - timedelta(hours=36)).isoformat()
+    if not last_scan or last_scan < h36:
+        alerts.append({"level": "bad", "key": "nightly", "text": f"no scan in 36h (last {last_scan[:16] if last_scan else 'never'}) — the nightly didn't run or timed out"})
+    elif scans[0].get("new") == 0 and (scans[0].get("found") or 0) > 0:
+        alerts.append({"level": "warn", "key": "zero-new", "text": f"the last scan found {scans[0].get('found')} pieces but stored 0 new — filters too tight or the insert failed"})
+    elif scans[0].get("found") == 0:
+        alerts.append({"level": "warn", "key": "zero-found", "text": "the last scan found nothing at all — sources blocked (Firecrawl / Algolia key)"})
+    if costs["ai_fail_7d"] > 25:
+        alerts.append({"level": "warn", "key": "ai-fail", "text": f"{costs['ai_fail_7d']} AI call failures this week — key, credits or rate limits"})
+    if pulse.get("feeds_starved", 0) > 0:
+        alerts.append({"level": "warn", "key": "starved", "text": f"{pulse['feeds_starved']} feed(s) under 25 live cards"})
+    for a in alerts: print(f"  ALERT [{a['level']}] {a['text']}")
+
     payload = {"built_at": NOW.isoformat(), "pulse": pulse, "users": users,
-               "funnel": funnel, "brands": brands, "catalog": comp, "costs": costs}
+               "funnel": funnel, "brands": brands, "catalog": comp, "costs": costs, "alerts": alerts}
 
     # ---- rolling daily history (merge with previous snapshot, replace today's row) ----
     obj = f"/storage/v1/object/wardrobe/{ADMIN_UID}/nucleus/nucleus.json"

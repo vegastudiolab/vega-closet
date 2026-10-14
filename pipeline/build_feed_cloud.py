@@ -9,10 +9,19 @@ from datetime import date, datetime, timezone, timedelta
 import taste_model
 
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-STAGE2_TOP = 60          # personal vision re-ranks only the slice that reaches the top of the feed
-STAGE2_TOP_YOUNG = 90    # young models (<MATURE_TAPS) lean harder on the rubric: wider slice, stronger nudge
-STAGE2_MAX_FRESH = 400   # ACTIVE users: whole in-wall pool gets judged, this many fresh verdicts per rebuild (~$1.30 cap)
-ACTIVE_DAYS = 14         # tapped within this window -> active (dormant users keep the small slice)
+STAGE2_MAX_FRESH = 400   # ACTIVE users: this many fresh vision verdicts per rebuild (~$1.30 cap), head of the feed first
+HEAD_VISION = 300        # vision re-ranks only the top of the feed (audit 2026-10-14: applied everywhere it LOWERED held-out AUC 0.672 -> 0.638; head only 0.674)
+ACTIVE_DAYS = 14         # tapped within this window -> active. Dormant users get NO fresh vision calls (71% of the weekly vision bill went to feeds nobody opened); cached verdicts still apply
+GEM_SHARE = 0.05         # outside-wall gems fill at most this share of the in-wall live feed (they were 17% of Charles's feed vs 5% of his likes)
+PERCAT_MIN = 60          # per-category taste models need this many labeled rows (blended 50/50 with the global fit: tops AUC 0.57 -> 0.63)
+TRAY_PCT = 0.5           # per category, live cards below this percentile of stage-1 fold into the "more" tray
+TRAY_MIN = 20            # a category needs this many live cards before it gets a tray at all
+BRAND_CAP = 0.15         # one brand may fill at most this share of a section's visible cards; the rest fold into the tray
+BRAND_CAP_MIN = 3        # ...but never fewer than this many
+ATTR_BACKFILL = 300      # active users: attr-less pieces in their pool attributed per rebuild (lazy attrs catch-up)
+DRY_RUN = bool(os.environ.get("DRY_RUN", "").strip())   # build + print, write nothing (local verification)
+_KIDS = re.compile(r"\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress|t-?shirt|tee)\b", re.I)
+_JKT  = re.compile(r"\b(?:track|coach|bomber|denim|leather|puffer|shirt|work|chore|trucker|varsity|harrington) jackets?\b|\bwindbreaker\b|\banorak\b", re.I)
 MATURE_TAPS = 300        # above this, the user's own fitted weights carry; below, prior + vision carry more
 CLEAR_WEIGHT = 0.5       # a feed clear trains as half a pass (some clears are about size, not style)
 STEAL_RATIO = 0.6        # priced at or under this share of the brand+category median = a steal
@@ -93,19 +102,16 @@ _ALL_SECTIONS = {
     "footwear":   ("footwear","in-size only, ranked to your eye"),
     "accessories":("accessories","belts in your size, plus one-size pieces — from accessories scans"),
 }
-# seasonal section order: summer/spring lead with tops, light layers still welcome;
-# fall/winter put outerwear back on top
-_SEASON = {12:"winter",1:"winter",2:"winter",3:"spring",4:"spring",5:"spring",
-           6:"summer",7:"summer",8:"summer",9:"fall",10:"fall",11:"fall"}[date.today().month]
-_ORDER = {
-    "summer": ["tops","bottoms","dresses","skirts","footwear","outerwear","accessories"],
-    "spring": ["tops","dresses","outerwear","bottoms","skirts","footwear","accessories"],
-    "fall":   ["outerwear","tops","bottoms","dresses","skirts","footwear","accessories"],
-    "winter": ["outerwear","tops","bottoms","dresses","skirts","footwear","accessories"],
-}[_SEASON]
-def sections_for(gender):
+# no seasonal logic anywhere (Charles 2026-09-03 / 2026-10-14: all-season shopper). Sections are
+# ordered by where THIS user's likes actually land (expected likes = live cards x their like-rate
+# in that category); users without history get the default order.
+_DEFAULT_ORDER = ["outerwear","tops","bottoms","dresses","skirts","footwear","accessories"]
+def sections_for(gender, order=None):
     # dresses/skirts only for women; men keep the original set
-    keys = _ORDER if gender == "women" else [k for k in _ORDER if k not in ("dresses","skirts")]
+    keys = [k for k in (order or _DEFAULT_ORDER) if k in _ALL_SECTIONS]
+    if gender != "women": keys = [k for k in keys if k not in ("dresses","skirts")]
+    for k in _DEFAULT_ORDER:                      # anything the caller left out keeps its default slot
+        if k not in keys and (gender == "women" or k not in ("dresses","skirts")): keys.append(k)
     return [(k,) + _ALL_SECTIONS[k] for k in keys]
 _HEAVY = re.compile(r"shearling|puffer|parka|\bdown\b|\bfur\b|overcoat|heavy ?wool|fleece|quilted", re.I)
 _LIGHT = re.compile(r"\blight|windbreaker|coach|track|nylon|denim jacket|shirt jacket|overshirt|\bvest\b|mesh|linen|short ?sleeve|\btank\b|\btee\b", re.I)
@@ -118,6 +124,8 @@ PRIOR_TAPS     = 8     # bayesian smoothing anchor so small samples don't over-t
 
 def build_for_user(uid, taste, catalog):
     sigs = fetch_all("signals", "url,action,brand,category,reasons,price,created_at", f"&user_id=eq.{uid}")
+    since = (datetime.now(timezone.utc) - timedelta(days=ACTIVE_DAYS)).isoformat()
+    active_user = any((x.get("created_at") or "") >= since for x in sigs)     # tapped recently -> gets fresh AI spend
     liked_ids, passed_ids, carted_ids = set(), set(), set()
     liked_brands, passed_brands = Counter(), Counter()
     liked_tags, passed_tags = Counter(), Counter()
@@ -148,12 +156,16 @@ def build_for_user(uid, taste, catalog):
     # Recomputed from live signals every build, so a gated combo reopens by itself once he loves from it.
     base_rate = len(liked_ids) / max(1, len(sigs)) if sigs else 0.25
     def smoothed(l, n): return (l + PRIOR_TAPS * base_rate) / (n + PRIOR_TAPS)
-    gated = {k for k, (l, n) in bc_stat.items() if n >= GATE_MIN_TAPS and smoothed(l, n) < GATE_MAX_RATE}
+    # fixed gate rate: a relative one (half the user's base rate, 12% for Charles) gated 17 lanes
+    # and starved the feed to 72 cards in the 2026-10-14 dry run. Lanes just above the line (Nike
+    # at 10.2%) are contained by the brand cap and the tray instead.
+    gate_rate = GATE_MAX_RATE
+    gated = {k for k, (l, n) in bc_stat.items() if n >= GATE_MIN_TAPS and smoothed(l, n) < gate_rate}
     # brand-overall deep gate -> the conductor samples these weekly on the PAID sources (grailed stays daily/free)
     b_stat = {}
     for (b, _), (l, n) in bc_stat.items():
         st = b_stat.setdefault(b, [0, 0]); st[0] += l; st[1] += n
-    deep_gated = sorted(b for b, (l, n) in b_stat.items() if b and n >= GATE_MIN_TAPS and smoothed(l, n) < GATE_MAX_RATE)
+    deep_gated = sorted(b for b, (l, n) in b_stat.items() if b and n >= GATE_MIN_TAPS and smoothed(l, n) < gate_rate)
 
     # ---- the archive: digest any new wardrobe uploads RIGHT NOW, so they shape this very build.
     # Photos -> attributes -> synthetic positive taps (receipts/rotation 3x, grails 2x, looks 1x)
@@ -273,27 +285,49 @@ def build_for_user(uid, taste, catalog):
     young = n_taps < MATURE_TAPS
     n_eff = n_taps + CLEAR_WEIGHT * n_clears + (len(labeled) - n_taps - n_clears)
     lam = n_eff / (n_eff + 150)
-    print(f"  stage-1 weights: {n_taps} taps + {n_clears} clears@{CLEAR_WEIGHT}, lambda {lam:.2f} personal ({'young' if young else 'mature'} model, {len(weights)} features)")
+    # per-category models (audit 2026-10-14): one global fit can't tell his tops apart (held-out
+    # AUC 0.57 on tops, 62% of the feed). A fit on each category's own rows, blended 50/50 with
+    # the global, lifted tops to 0.63 and outerwear 0.62 -> 0.65 on the same held-out taps.
+    w_cat, brate_cat = {}, {}
+    for k in ("outerwear", "tops", "bottoms", "footwear", "dresses", "skirts"):
+        rows_k = [t for t in labeled if t[1].get("category") == k]
+        if len(rows_k) >= PERCAT_MIN:
+            wk, pk = taste_model.fit_user_weights(rows_k, prior=PRIOR)
+            w_cat[k] = wk; brate_cat[k] = taste_model.brand_rates(pk) if pk else brate
+    print(f"  stage-1 weights: {n_taps} taps + {n_clears} clears@{CLEAR_WEIGHT}, lambda {lam:.2f} personal ({'young' if young else 'mature'} model, {len(weights)} features) | per-category models: {sorted(w_cat)}")
 
     def stage1(it):
         a = it.get("attrs")
         if not (weights and a): return None
-        return taste_model.predict(weights, taste_model.featurize(a, it.get("brand"), it.get("price"), it.get("category"), brate(it.get("brand"))))
+        s = taste_model.predict(weights, taste_model.featurize(a, it.get("brand"), it.get("price"), it.get("category"), brate(it.get("brand"))))
+        wk = w_cat.get(it.get("category"))
+        if wk:
+            fk = taste_model.featurize(a, it.get("brand"), it.get("price"), it.get("category"), brate_cat[it.get("category")](it.get("brand")))
+            s = 0.5 * s + 0.5 * taste_model.predict(wk, fk)
+        return s
+
+    # like-rate per category from this user's own taps (smoothed): drives the section order and
+    # the picks split. Charles 2026-10-14: bottoms 100% / outerwear 87% / tops 18% / footwear 30%,
+    # while tops were 62% of the feed and 22 of the 40 picks.
+    cat_tap = {}
+    for x in sigs:
+        k = norm(x.get("category")); st = cat_tap.setdefault(k, [0, 0]); st[1] += 1
+        if x["action"] in ("liked", "carted"): st[0] += 1
+    base_like = (sum(l for l, _ in cat_tap.values()) / max(1, sum(n for _, n in cat_tap.values()))) if cat_tap else 0.25
+    def cat_rate(k):
+        l, n = cat_tap.get(k, (0, 0)); return (l + 20 * base_like) / (n + 20)
 
     def adj(it):
+        # taste only (audit 2026-10-14): the style-tag boosts, the soft price ceiling and the flat
+        # loved-brand bonus are gone. Together they were net-neutral on held-out taps (AUC 0.655 ->
+        # 0.653); the bonus alone, kept without the tag penalties, let the brand with the biggest
+        # supply (Nike, 8% like-rate) crowd every section in the dry run. Brand identity already
+        # lives inside the model as a smoothed like-rate. Acted pins stay (liked/carted sections).
         s1 = it.get("_s1")
         s = s1 if s1 is not None else float(it.get("base_score") or 0)
-        url = it["url"]; b = norm(it.get("brand"))
+        url = it["url"]
         if url in carted_ids: s += 0.45
         elif url in liked_ids: s += 0.30
-        if b in liked_brands: s += min(0.03 * liked_brands[b], 0.09)
-        for r in it.get("reasons") or []:
-            rn = norm(r)
-            if not is_style(rn): continue
-            if liked_tags.get(rn):  s += min(0.05 * liked_tags[rn], 0.25)
-            if passed_tags.get(rn): s -= min(0.05 * passed_tags[rn], 0.25)
-        if soft and isinstance(it.get("price"), (int, float)) and it["price"] > soft * 1.5: s -= 0.06
-        # no seasonal nudge: Charles shops every season year-round (2026-09-03); taste only.
         return round(s, 4)
 
     # THE hard promise: nothing that doesn't fit THIS user ever reaches their feed. Sizes are data
@@ -359,9 +393,36 @@ def build_for_user(uid, taste, catalog):
         if not it["isArchived"] and not it["isLiked"] and not fits_user(it):
             n_size_retired += 1
             continue
+        if not it["isArchived"] and not it["isLiked"]:
+            ttl = it.get("title") or ""
+            if _KIDS.search(ttl): continue                 # children's pieces already in the catalog
+            if it.get("category") == "tops" and _JKT.search(ttl): it["category"] = "outerwear"   # sources file track/coach jackets under tops
         it["_s1"] = stage1(it)
         it["score"] = adj(it); it["firstSeen"] = it.get("first_seen")
         items.append(it)
+
+    # lazy attrs (audit 2026-10-14): the nightly only attributes what an ACTIVE user could see.
+    # A returning user's pool may hold attr-less pieces — attribute them here, best base_score
+    # first, bounded per rebuild, and share the attrs with everyone else's build tonight.
+    n_backfill = 0
+    if ANTHROPIC_KEY and active_user and not DRY_RUN:
+        todo_a = sorted([it for it in items if not it["isArchived"] and not it["isLiked"] and not it.get("attrs")],
+                        key=lambda x: -float(x.get("base_score") or 0))[:ATTR_BACKFILL]
+        if todo_a:
+            from concurrent.futures import ThreadPoolExecutor
+            def _bf(it):
+                a = taste_model.extract_attrs(ANTHROPIC_KEY, it.get("image"), it.get("title") or "")
+                if a is None:
+                    a = taste_model.extract_attrs(ANTHROPIC_KEY, it.get("image"), it.get("title") or "")   # one retry
+                if a is not None:
+                    it["attrs"] = a
+                    if it["url"] in cat_by_url: cat_by_url[it["url"]]["attrs"] = a
+                    api("PATCH", "/rest/v1/catalog?url=eq." + urllib.parse.quote(it["url"], safe=""), {"attrs": a}, {"Prefer": "return=minimal"})
+                    it["_s1"] = stage1(it); it["score"] = adj(it)
+            with ThreadPoolExecutor(max_workers=12) as ex:
+                list(ex.map(_bf, todo_a))
+            n_backfill = sum(1 for it in todo_a if it.get("attrs"))
+            print(f"  lazy attrs: backfilled {n_backfill} of {len(todo_a)} attr-less pieces in this user's pool")
 
     # gated lane: un-acted items from a gated combo/brand must rank in the user's TOP band to
     # surface (stage-1 percentile — logistic scores aren't on the old 0-1 vision scale). Legacy
@@ -382,26 +443,53 @@ def build_for_user(uid, taste, catalog):
         return any(len(m) > 4 and (m in nb or nb in m) for m in my_brands)  # Rick Owens ~ Rick Owens DRKSHDW
     n_gated_out = 0
     n_foreign_out = 0
-    s1_pool = sorted(it["_s1"] for it in items if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"])
-    gate_thr = s1_pool[int(0.88 * (len(s1_pool) - 1))] if s1_pool else None
-    gem_thr = s1_pool[int(0.95 * (len(s1_pool) - 1))] if s1_pool else None
-    kept = []
+    # thresholds PER CATEGORY (dry run 2026-10-14: one global percentile let the tops score scale
+    # starve outerwear, 53 live -> 28). Each category gates, finds gems and folds its tray on its own scale.
+    pool_by_cat = {}
+    for it in items:
+        if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"]:
+            pool_by_cat.setdefault(it.get("category"), []).append(it["_s1"])
+    gate_thr, gem_thr = {}, {}
+    for k, v in pool_by_cat.items():
+        v.sort(); n = len(v)
+        gate_thr[k] = v[int(0.88 * (n - 1))]; gem_thr[k] = v[int(0.95 * (n - 1))]
+    kept, gems = [], {}
     for it in items:
         if not it["isArchived"] and not it["isLiked"] and "unrated" not in (it.get("reasons") or []):
             b, cc = norm(it.get("brand")), norm(it.get("category"))
             if my_brands and not brand_mine(it.get("brand")):
-                v = it["_s1"]
-                if not (v is not None and gem_thr is not None and v >= gem_thr):
+                v = it["_s1"]; gt = gem_thr.get(it.get("category"))
+                if v is not None and gt is not None and v >= gt:
+                    gems.setdefault(it.get("category"), []).append(it)      # capped below
+                else:
                     n_foreign_out += 1
-                    continue
+                continue
             if (b, cc) in gated or b in deep_gated:
-                v = it["_s1"]
-                passes = (v >= gate_thr) if (v is not None and gate_thr is not None) else (float(it.get("base_score") or 0) >= min(GATE_VISION, GEM_OVERRIDE))
+                v = it["_s1"]; th = gate_thr.get(it.get("category"))
+                passes = (v >= th) if (v is not None and th is not None) else (float(it.get("base_score") or 0) >= min(GATE_VISION, GEM_OVERRIDE))
                 if not passes:
                     n_gated_out += 1
                     continue
         kept.append(it)
+    # gems: at most GEM_SHARE of each category's in-wall live cards, best stage-1 first (audit
+    # 2026-10-14: the top-5%-of-pool rule alone let strangers fill 17% of a 300-card feed; 5% of his likes come from there)
+    n_gems = 0
+    for k, lst in gems.items():
+        n_inwall_k = sum(1 for it in kept if not it["isArchived"] and not it["isLiked"] and it.get("category") == k)
+        cap = max(3, int(GEM_SHARE * n_inwall_k))
+        lst.sort(key=lambda x: -(x["_s1"] or 0))
+        n_foreign_out += max(0, len(lst) - cap); n_gems += min(len(lst), cap)
+        kept += lst[:cap]
     items = kept
+    # tray: the lower half of each category's live cards (by stage-1, this user's own scale) goes
+    # behind a per-section "more" fold — still there, filterable, never a pick or a steal.
+    tray_thr = {}
+    for k in pool_by_cat:
+        v = sorted(it["_s1"] for it in items if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"] and it.get("category") == k)
+        if len(v) >= TRAY_MIN: tray_thr[k] = v[int(TRAY_PCT * (len(v) - 1))]
+    for it in items:
+        th = tray_thr.get(it.get("category"))
+        it["tail"] = bool(th is not None and it["_s1"] is not None and it["_s1"] < th and not it["isArchived"] and not it["isLiked"])
 
     # ---- stage 2: personal vision re-rank of the visible slice. Same judgment quality as the
     # old per-item pass, but bounded: only the top N un-acted items, and each (user,item) verdict
@@ -409,44 +497,45 @@ def build_for_user(uid, taste, catalog):
     # while the per-user cost stays flat as the catalog and user count grow. ----
     vb = taste.get("visualBrief")
     brief = vb if isinstance(vb, str) else (vb.get("brief") if isinstance(vb, dict) and isinstance(vb.get("brief"), str) else (json.dumps(vb)[:4000] if vb else None))
-    n_stage2 = 0
-    if ANTHROPIC_KEY and brief:
+    n_stage2 = 0; n_fresh = 0
+    if brief:
         cache = {r["url"]: (r.get("vfit"), r.get("tags") or []) for r in
                  fetch_all("user_scores", "url,vfit,tags", f"&user_id=eq.{uid}")}
         unacted = [it for it in items if not it["isArchived"] and not it["isLiked"] and "unrated" not in (it.get("reasons") or [])]
         unacted.sort(key=lambda x: -x["score"])
-        # active users: the WHOLE in-wall pool gets judged (holdout AUC: vision 0.72 vs stage-1 0.65;
-        # verdicts cache forever) — bounded per rebuild by STAGE2_MAX_FRESH, best stage-1 first.
-        # dormant users keep the small slice so cost stays flat across the user base.
-        since = (datetime.now(timezone.utc) - timedelta(days=ACTIVE_DAYS)).isoformat()
-        active_user = any((x.get("created_at") or "") >= since for x in sigs)
-        fresh_pool = [it for it in unacted if it["url"] not in cache]
-        todo = fresh_pool[:STAGE2_MAX_FRESH] if active_user else fresh_pool[:(STAGE2_TOP_YOUNG if young else STAGE2_TOP)]
-        todo_urls = {it["url"] for it in todo}
-        top = [it for it in unacted if it["url"] in cache or it["url"] in todo_urls]   # every cached verdict applies, free
+        head = unacted[:HEAD_VISION]                # vision touches only what reaches the top of the feed
         fresh = {}
-        if todo:
-            from concurrent.futures import ThreadPoolExecutor
-            def _vs(it):
-                res = taste_model.vision_fit(ANTHROPIC_KEY, it.get("image"), brief)
-                if res is None:
-                    res = taste_model.vision_fit(ANTHROPIC_KEY, it.get("image"), brief)  # one retry
-                if res is not None: fresh[it["url"]] = res
-            with ThreadPoolExecutor(max_workers=6) as ex:
-                list(ex.map(_vs, todo))
-            if fresh:
-                rows_up = [{"user_id": uid, "url": u, "vfit": round(v, 3), "tags": t} for u, (v, t) in fresh.items()]
-                api("POST", "/rest/v1/user_scores?on_conflict=user_id,url", rows_up,
-                    {"Prefer": "resolution=merge-duplicates,return=minimal"})
-        vnudge = 0.6                                # vision leads once it has looked (backtest: 0.72 vs 0.65)
-        for it in top:
+        if ANTHROPIC_KEY and active_user and not DRY_RUN:
+            # ACTIVE users only: fresh verdicts for the head and the band just below it (so
+            # tomorrow's head is already judged), bounded by STAGE2_MAX_FRESH, best stage-1 first.
+            # Dormant users ride on cached verdicts alone — 71% of the weekly vision bill was
+            # going to feeds nobody opened (audit 2026-10-14).
+            todo = [it for it in unacted[:2 * HEAD_VISION] if it["url"] not in cache][:STAGE2_MAX_FRESH]
+            if todo:
+                from concurrent.futures import ThreadPoolExecutor
+                def _vs(it):
+                    res = taste_model.vision_fit(ANTHROPIC_KEY, it.get("image"), brief)
+                    if res is None:
+                        res = taste_model.vision_fit(ANTHROPIC_KEY, it.get("image"), brief)  # one retry
+                    if res is not None: fresh[it["url"]] = res
+                with ThreadPoolExecutor(max_workers=6) as ex:
+                    list(ex.map(_vs, todo))
+                if fresh:
+                    rows_up = [{"user_id": uid, "url": u, "vfit": round(v, 3), "tags": t} for u, (v, t) in fresh.items()]
+                    api("POST", "/rest/v1/user_scores?on_conflict=user_id,url", rows_up,
+                        {"Prefer": "resolution=merge-duplicates,return=minimal"})
+                n_fresh = len(fresh)
+        # vision is strong at the very top (held-out P@50 18% vs 8% for stage-1) and noisy below
+        # it (AUC 0.60 vs 0.67): nudge the head only, never the whole pool.
+        vnudge = 0.6
+        for it in head:
             got = fresh.get(it["url"]) or cache.get(it["url"])
             if not got or got[0] is None: continue
             vf, vtags = float(got[0]), got[1]
             it["score"] = round(it["score"] + vnudge * (vf - 0.5), 4)  # vision nudges the visible ranking
             if vtags: it["reasons"] = vtags[:5]                        # per-user why-tags (payload copy only)
             n_stage2 += 1
-    for it in items: it.pop("_s1", None)
+    for it in items: it["s1"] = it.pop("_s1", None)       # keep the pure stage-1 for diagnostics (not published)
 
     latest = max((it.get("firstSeen","") for it in items if not it["isArchived"]), default="")
     for it in items:
@@ -458,7 +547,7 @@ def build_for_user(uid, taste, catalog):
                 "image":it.get("image"),"url":it.get("url"),"reasons":it.get("reasons") or [],"score":it["score"],
                 "sz":it.get("sz"),"isArchived":it["isArchived"],"isLiked":it["isLiked"],"isCarted":it.get("isCarted",False),"isNew":it["isNew"],
                 "similar":it.get("similar",0),"pick":bool(it.get("pick")),
-                "steal":bool(it.get("steal")),"stealPct":it.get("steal_pct",0)}
+                "steal":bool(it.get("steal")),"stealPct":it.get("steal_pct",0),"tail":bool(it.get("tail"))}
     # ---- assembly (audit 2026-09-03): dedupe -> taste-first order with diversity -> picks ----
     # 1) collapse same brand+title+category listings: 18% of the feed was the same piece in other
     #    sizes/conditions. Best-scored survives and carries `similar` = how many it stands for.
@@ -491,7 +580,7 @@ def build_for_user(uid, taste, catalog):
         pr = it.get("price")
         if not (isinstance(pr, (int, float)) and pr > 0): continue
         ref = med.get((norm(it.get("brand")), it.get("category")))
-        if ref and pr <= STEAL_RATIO * ref and it["score"] >= sc_p50:
+        if ref and pr <= STEAL_RATIO * ref and it["score"] >= sc_p50 and not it.get("tail"):
             it["steal"] = True; it["steal_pct"] = int(round((1 - pr / ref) * 100)); n_steals += 1
     # 2) order by TASTE, not arrival (was: newest day first, score only broke ties). Greedy
     #    diversity: every repeat of a brand / look-cluster / source already placed costs a little,
@@ -520,34 +609,93 @@ def build_for_user(uid, taste, catalog):
     ordered = {}
     for key, _t, _s in sections_for(ugender):
         ordered[key] = diversify([i for i in items if i.get("category") == key and not i["isArchived"] and not i["isLiked"]])
-    # 3) picks: 40 cards spread across categories — each section gets a share proportional to its
-    #    pool (floor 5 when it has items), filled from its diversified head. Scores aren't comparable
-    #    across categories (outerwear runs hot), so a global top-40 was 70% jackets.
+    # brand cap: no house fills more than BRAND_CAP of a section's visible cards (min BRAND_CAP_MIN);
+    # the overflow folds into the tray. Supply is not taste — Nike alone was 15 of 18 visible
+    # outerwear cards in the 2026-10-14 dry run because Grailed lists hundreds of cheap pieces.
+    for key, lst in ordered.items():
+        vis = [it for it in lst if not it.get("tail")]
+        tot_b = Counter(norm(it.get("brand")) for it in vis)
+        # cap each brand against the OTHER brands' visible cards, so its share of what remains
+        # visible is BRAND_CAP (a cap on the pre-cap count let Nike keep 30 of 78 visible tops)
+        seen_b = Counter()
+        for it in vis:
+            b = norm(it.get("brand")); seen_b[b] += 1
+            cap = max(BRAND_CAP_MIN, int(BRAND_CAP / (1 - BRAND_CAP) * (len(vis) - tot_b[b])))
+            if seen_b[b] > cap: it["tail"] = True; it["capped"] = True
+    n_tray = sum(1 for lst in ordered.values() for it in lst if it.get("tail"))
+    # 3) picks: 40 cards spread across categories by EXPECTED LIKES (live cards x this user's
+    #    like-rate in the category), floor 5, filled from each section's diversified head and never
+    #    from the tray. Was proportional to supply: tops were 22 of 40 picks at an 18% like-rate.
     PICKS = 40
-    sizes = {k: len(v) for k, v in ordered.items() if v}
-    tot_live = sum(sizes.values()) or 1
-    quota = {k: max(5, round(PICKS * n / tot_live)) for k, n in sizes.items()}
+    sizes = {k: sum(1 for it in v if not it.get("tail")) for k, v in ordered.items()}
+    sizes = {k: n for k, n in sizes.items() if n}
+    ev = {k: n * cat_rate(k) for k, n in sizes.items()}
+    tot_ev = sum(ev.values()) or 1
+    quota = {k: max(min(5, n), round(PICKS * ev[k] / tot_ev)) for k, n in sizes.items()}
     while sum(quota.values()) > PICKS:                     # trim the biggest section until it fits
         k = max(quota, key=quota.get); quota[k] -= 1
     for k, q in quota.items():
-        for it in ordered[k][:min(q, sizes[k])]: it["pick"] = True
+        for it in [it for it in ordered[k] if not it.get("tail")][:q]: it["pick"] = True
+    # section order = this user's like-rate per category, highest first (no seasons): where a
+    # card is most likely to be a love leads, however big the supply behind it
+    order = sorted(ordered, key=lambda k: (-cat_rate(k), -len(ordered[k])))
+    # results shelf (manual keyword / category / brand scan): the pieces that scan stored, pinned
+    # on top as their own section, best match first, no diversity spreading, never in the tray.
+    # The conductor writes scan_result.json in the workspace; it only exists in that run's checkout.
+    shelf = None
+    try:
+        sr_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scan_result.json")
+        if os.path.exists(sr_path):
+            sr = json.load(open(sr_path))
+            if sr.get("user") == uid and sr.get("urls"): shelf = sr
+    except Exception as e:
+        print("  results shelf unreadable:", e)
+    shelf_items = []
+    if shelf:
+        want = set(shelf["urls"])
+        shelf_items = sorted([it for it in items if it["url"] in want and not it["isArchived"] and not it["isLiked"]], key=lambda x: -x["score"])
+        for it in shelf_items: it["tail"] = False; it["fromScan"] = True
+        n_tray = sum(1 for lst in ordered.values() for it in lst if it.get("tail"))
     secout = []
-    for key, title, sub in sections_for(ugender):
+    if shelf_items:
+        secout.append({"key": "search", "title": "your search · " + str(shelf.get("query") or ""),
+                       "subtitle": f"{len(shelf_items)} pieces this scan found in your sizes, best match first — they stay here until tonight's rebuild",
+                       "items": [ri(i) for i in shelf_items]})
+    for key, title, sub in sections_for(ugender, order):
         cat = [it for it in items if it.get("category") == key]
         lik = sorted([i for i in cat if i["isLiked"] and not i["isArchived"]], key=lambda x: -x["score"])
         arc = sorted([i for i in cat if i["isArchived"]], key=lambda x: -x.get("score",0))
-        secout.append({"key":key,"title":title,"subtitle":sub,"items":[ri(i) for i in ordered[key]+lik+arc]})
+        secout.append({"key":key,"title":title,"subtitle":sub,"items":[ri(i) for i in ordered.get(key, []) if not i.get("fromScan")]+[ri(i) for i in lik+arc]})
     active = [it for it in items if not it["isArchived"]]
     total = sum(1 for it in active if not it["isLiked"])
     n_liked = sum(1 for it in active if it["isLiked"]); n_arch = sum(1 for it in items if it["isArchived"])
     plat = Counter(it.get("platform","?") for it in active if not it["isLiked"])
-    note = ("%d new to review, %d liked, %d archived. %s rotation: %s lead. one filter bar: show (feed / liked / archived / all) "
-            "stacks with category, size, price and source. love a piece and it moves to liked; pass it to archived.") % (
-            total, n_liked, n_arch, _SEASON, _ORDER[0])
+    lead = next((k for k in order if ordered.get(k)), order[0] if order else "outerwear")
+    note = ("%d new to review, %d liked, %d archived. sections ordered by where your loves land: %s first. "
+            "one filter bar: show (feed / picks / steals / liked / archived / all) stacks with category, size, price and source. "
+            "love a piece and it moves to liked; pass it to archived.") % (total, n_liked, n_arch, lead)
     feed = {"date":TODAY,"runId":TODAY+"-cloud","scanned":len(catalog),
             "platforms":{"grailed":plat.get("grailed",0),"therealreal":plat.get("therealreal",0),"ssense":plat.get("ssense",0)},
             "note":note,"sections":secout}
-    api("POST", "/rest/v1/feeds?on_conflict=user_id", [{"user_id":uid,"payload":feed,"built_at":NOW}], {"Prefer":"resolution=merge-duplicates,return=minimal"})
+    if DRY_RUN:
+        try:
+            dump = [{"url": it["url"], "cat": it.get("category"), "brand": it.get("brand"), "title": it.get("title"), "price": it.get("price"),
+                     "platform": it.get("platform"), "s1": it.get("s1"), "score": it["score"], "tail": bool(it.get("tail")), "capped": bool(it.get("capped")),
+                     "pick": bool(it.get("pick")), "steal": bool(it.get("steal")), "pos": i}
+                    for k in order for i, it in enumerate(ordered[k])]
+            json.dump(dump, open(os.environ.get("DRY_DUMP", f"/tmp/dry_{uid[:8]}.json"), "w"))
+        except Exception as e:
+            print("  dry dump failed:", e)
+        print(f"  DRY RUN {uid[:8]}: order {order} | shelf {len(shelf_items)} | per section (live / tray / picks): " +
+              ", ".join(f"{k} {len(ordered[k])}/{sum(1 for it in ordered[k] if it.get('tail'))}/{sum(1 for it in ordered[k] if it.get('pick'))}" for k in order))
+        for k in order:
+            vis = [it for it in ordered[k] if not it.get("tail")]
+            bshare = Counter(norm(it.get("brand")) for it in vis[:30]).most_common(4)
+            print(f"   {k}: visible {len(vis)} | top-30 brand share {bshare}")
+            for it in vis[:10]:
+                print(f"     {it['score']:+.3f}{' P' if it.get('pick') else '  '}{' $' if it.get('steal') else '  '} {(it.get('brand') or '')[:20]:20s} {(it.get('title') or '')[:56]}")
+    else:
+        api("POST", "/rest/v1/feeds?on_conflict=user_id", [{"user_id":uid,"payload":feed,"built_at":NOW}], {"Prefer":"resolution=merge-duplicates,return=minimal"})
 
     # taste write-back: promote brands liked >=3x (canonicalize), refresh tallies, never cool a brand
     loved = taste.get("brands", {}).get("loved", []); lset = {norm(x) for x in loved}; promoted = []
@@ -570,10 +718,10 @@ def build_for_user(uid, taste, catalog):
     s["passedStyleTags"] = dict((t,n) for t,n in passed_tags.most_common(60) if is_style(t))
     if soft: s["softPriceCeilingFromPasses"] = soft
     taste.setdefault("brands", {})["loved"] = loved; taste.setdefault("meta", {})["lastUpdated"] = TODAY
-    api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
-    print(f"  user {uid[:8]}: {total} to review, {n_liked} liked, {n_arch} archived | "
-          f"stage-2 vision on {n_stage2} top items | {n_gated_out} gated out across {len(gated)} combos, "
-          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall (gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_sold} sold hidden | {n_steals} steals"
+    if not DRY_RUN: api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
+    print(f"  user {uid[:8]}: {total} to review ({n_tray} in the tray{', ' + str(len(shelf_items)) + ' on the search shelf' if shelf_items else ''}), {n_liked} liked, {n_arch} archived | "
+          f"stage-2 vision on {n_stage2} head items ({n_fresh} fresh) | attrs backfilled {n_backfill} | {n_gated_out} gated out across {len(gated)} combos, "
+          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall ({n_gems} gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_sold} sold hidden | {n_steals} steals"
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():
