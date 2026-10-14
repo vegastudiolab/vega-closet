@@ -19,6 +19,8 @@ TRAY_MIN = 20            # a category needs this many live cards before it gets 
 BRAND_CAP = 0.15         # one brand may fill at most this share of a section's visible cards; the rest fold into the tray
 BRAND_CAP_MIN = 3        # ...but never fewer than this many
 ATTR_BACKFILL = 300      # active users: attr-less pieces in their pool attributed per rebuild (lazy attrs catch-up)
+TRAY_KEEP = 8            # a section with cards never shows fewer than this many (the fold yields first)
+SHELF_DAYS = 2           # a search shelf survives this many days of nightly rebuilds (or until the next search)
 DRY_RUN = bool(os.environ.get("DRY_RUN", "").strip())   # build + print, write nothing (local verification)
 _KIDS = re.compile(r"\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress|t-?shirt|tee)\b", re.I)
 _JKT  = re.compile(r"\b(?:track|coach|bomber|denim|leather|puffer|shirt|work|chore|trucker|varsity|harrington) jackets?\b|\bwindbreaker\b|\banorak\b", re.I)
@@ -443,11 +445,34 @@ def build_for_user(uid, taste, catalog):
         return any(len(m) > 4 and (m in nb or nb in m) for m in my_brands)  # Rick Owens ~ Rick Owens DRKSHDW
     n_gated_out = 0
     n_foreign_out = 0
+    # results shelf (manual keyword / category / brand scan): the pieces that scan stored come back
+    # as their own pinned section. The conductor writes scan_result.json in the run's checkout; the
+    # builder also keeps it in taste.meta.shelf for SHELF_DAYS so the nightly doesn't wipe it.
+    shelf = None
+    try:
+        sr_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scan_result.json")
+        if os.path.exists(sr_path):
+            sr = json.load(open(sr_path))
+            if sr.get("user") == uid and sr.get("urls"): shelf = sr
+    except Exception as e:
+        print("  results shelf unreadable:", e)
+    if not shelf:
+        kept_shelf = (taste.get("meta") or {}).get("shelf")
+        if isinstance(kept_shelf, dict) and kept_shelf.get("urls") and (kept_shelf.get("at") or "") >= (date.today() - timedelta(days=SHELF_DAYS)).isoformat():
+            shelf = kept_shelf
+    shelf_items = []
+    if shelf:
+        want = set(shelf["urls"])
+        for it in items:
+            if it["url"] in want and not it["isArchived"] and not it["isLiked"]: it["fromScan"] = True
+        taste.setdefault("meta", {})["shelf"] = {"query": shelf.get("query"), "urls": list(shelf["urls"])[:200], "at": shelf.get("at") or TODAY}
     # thresholds PER CATEGORY (dry run 2026-10-14: one global percentile let the tops score scale
-    # starve outerwear, 53 live -> 28). Each category gates, finds gems and folds its tray on its own scale.
+    # starve outerwear, 53 live -> 28). Each category gates, finds gems and folds its tray on its own
+    # scale. Shelf pieces sit outside these pools: 43 strong denim jackets on the shelf once pushed
+    # the outerwear median so high that every other outerwear card folded.
     pool_by_cat = {}
     for it in items:
-        if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"]:
+        if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"] and not it.get("fromScan"):
             pool_by_cat.setdefault(it.get("category"), []).append(it["_s1"])
     gate_thr, gem_thr = {}, {}
     for k, v in pool_by_cat.items():
@@ -485,11 +510,11 @@ def build_for_user(uid, taste, catalog):
     # behind a per-section "more" fold — still there, filterable, never a pick or a steal.
     tray_thr = {}
     for k in pool_by_cat:
-        v = sorted(it["_s1"] for it in items if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"] and it.get("category") == k)
+        v = sorted(it["_s1"] for it in items if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"] and it.get("category") == k and not it.get("fromScan"))
         if len(v) >= TRAY_MIN: tray_thr[k] = v[int(TRAY_PCT * (len(v) - 1))]
     for it in items:
         th = tray_thr.get(it.get("category"))
-        it["tail"] = bool(th is not None and it["_s1"] is not None and it["_s1"] < th and not it["isArchived"] and not it["isLiked"])
+        it["tail"] = bool(th is not None and it["_s1"] is not None and it["_s1"] < th and not it["isArchived"] and not it["isLiked"] and not it.get("fromScan"))
 
     # ---- stage 2: personal vision re-rank of the visible slice. Same judgment quality as the
     # old per-item pass, but bounded: only the top N un-acted items, and each (user,item) verdict
@@ -608,7 +633,7 @@ def build_for_user(uid, taste, catalog):
         return out + pool + rest
     ordered = {}
     for key, _t, _s in sections_for(ugender):
-        ordered[key] = diversify([i for i in items if i.get("category") == key and not i["isArchived"] and not i["isLiked"]])
+        ordered[key] = diversify([i for i in items if i.get("category") == key and not i["isArchived"] and not i["isLiked"] and not i.get("fromScan")])
     # brand cap: no house fills more than BRAND_CAP of a section's visible cards (min BRAND_CAP_MIN);
     # the overflow folds into the tray. Supply is not taste — Nike alone was 15 of 18 visible
     # outerwear cards in the 2026-10-14 dry run because Grailed lists hundreds of cheap pieces.
@@ -622,6 +647,12 @@ def build_for_user(uid, taste, catalog):
             b = norm(it.get("brand")); seen_b[b] += 1
             cap = max(BRAND_CAP_MIN, int(BRAND_CAP / (1 - BRAND_CAP) * (len(vis) - tot_b[b])))
             if seen_b[b] > cap: it["tail"] = True; it["capped"] = True
+        # floor: a section never shows fewer than TRAY_KEEP cards while it has them (after a feed
+        # clear the leftover pool is thin and the fold could otherwise hide an entire section)
+        n_vis = sum(1 for it in lst if not it.get("tail"))
+        if 0 < n_vis < TRAY_KEEP:
+            for it in sorted([it for it in lst if it.get("tail")], key=lambda x: (bool(x.get("capped")), -x["score"]))[:TRAY_KEEP - n_vis]:
+                it["tail"] = False
     n_tray = sum(1 for lst in ordered.values() for it in lst if it.get("tail"))
     # 3) picks: 40 cards spread across categories by EXPECTED LIKES (live cards x this user's
     #    like-rate in the category), floor 5, filled from each section's diversified head and never
@@ -639,27 +670,13 @@ def build_for_user(uid, taste, catalog):
     # section order = this user's like-rate per category, highest first (no seasons): where a
     # card is most likely to be a love leads, however big the supply behind it
     order = sorted(ordered, key=lambda k: (-cat_rate(k), -len(ordered[k])))
-    # results shelf (manual keyword / category / brand scan): the pieces that scan stored, pinned
-    # on top as their own section, best match first, no diversity spreading, never in the tray.
-    # The conductor writes scan_result.json in the workspace; it only exists in that run's checkout.
-    shelf = None
-    try:
-        sr_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scan_result.json")
-        if os.path.exists(sr_path):
-            sr = json.load(open(sr_path))
-            if sr.get("user") == uid and sr.get("urls"): shelf = sr
-    except Exception as e:
-        print("  results shelf unreadable:", e)
-    shelf_items = []
-    if shelf:
-        want = set(shelf["urls"])
-        shelf_items = sorted([it for it in items if it["url"] in want and not it["isArchived"] and not it["isLiked"]], key=lambda x: -x["score"])
-        for it in shelf_items: it["tail"] = False; it["fromScan"] = True
-        n_tray = sum(1 for lst in ordered.values() for it in lst if it.get("tail"))
+    # the shelf section: best match first, no diversity spreading, never in the tray
+    shelf_items = sorted([it for it in items if it.get("fromScan")], key=lambda x: -x["score"])
+    for it in shelf_items: it["tail"] = False
     secout = []
     if shelf_items:
         secout.append({"key": "search", "title": "your search · " + str(shelf.get("query") or ""),
-                       "subtitle": f"{len(shelf_items)} pieces this scan found in your sizes, best match first — they stay here until tonight's rebuild",
+                       "subtitle": f"{len(shelf_items)} pieces your scan found in your sizes, best match first — they stay here for {SHELF_DAYS} days or until your next search",
                        "items": [ri(i) for i in shelf_items]})
     for key, title, sub in sections_for(ugender, order):
         cat = [it for it in items if it.get("category") == key]
