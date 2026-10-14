@@ -20,7 +20,9 @@ BRAND_CAP = 0.15         # one brand may fill at most this share of a section's 
 BRAND_CAP_MIN = 3        # ...but never fewer than this many
 ATTR_BACKFILL = 300      # active users: attr-less pieces in their pool attributed per rebuild (lazy attrs catch-up)
 TRAY_KEEP = 8            # a section with cards never shows fewer than this many (the fold yields first)
+TRAY_MAX_AGE = 14        # folded pieces older than this many days retire from the feed
 SHELF_DAYS = 2           # a search shelf survives this many days of nightly rebuilds (or until the next search)
+SHELF_MIN = 3            # a shelf with fewer live pieces than this is done and disappears
 DRY_RUN = bool(os.environ.get("DRY_RUN", "").strip())   # build + print, write nothing (local verification)
 _KIDS = re.compile(r"\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress|t-?shirt|tee)\b", re.I)
 _JKT  = re.compile(r"\b(?:track|coach|bomber|denim|leather|puffer|shirt|work|chore|trucker|varsity|harrington) jackets?\b|\bwindbreaker\b|\banorak\b", re.I)
@@ -463,9 +465,12 @@ def build_for_user(uid, taste, catalog):
     shelf_items = []
     if shelf:
         want = set(shelf["urls"])
-        for it in items:
-            if it["url"] in want and not it["isArchived"] and not it["isLiked"]: it["fromScan"] = True
-        taste.setdefault("meta", {})["shelf"] = {"query": shelf.get("query"), "urls": list(shelf["urls"])[:200], "at": shelf.get("at") or TODAY}
+        matched = [it for it in items if it["url"] in want and not it["isArchived"] and not it["isLiked"]]
+        if len(matched) >= SHELF_MIN:
+            for it in matched: it["fromScan"] = True
+            taste.setdefault("meta", {})["shelf"] = {"query": shelf.get("query"), "urls": list(shelf["urls"])[:200], "at": shelf.get("at") or TODAY}
+        else:
+            (taste.get("meta") or {}).pop("shelf", None)           # the user worked through it: the shelf is done
     # thresholds PER CATEGORY (dry run 2026-10-14: one global percentile let the tops score scale
     # starve outerwear, 53 live -> 28). Each category gates, finds gems and folds its tray on its own
     # scale. Shelf pieces sit outside these pools: 43 strong denim jackets on the shelf once pushed
@@ -512,9 +517,21 @@ def build_for_user(uid, taste, catalog):
     for k in pool_by_cat:
         v = sorted(it["_s1"] for it in items if it["_s1"] is not None and not it["isArchived"] and not it["isLiked"] and it.get("category") == k and not it.get("fromScan"))
         if len(v) >= TRAY_MIN: tray_thr[k] = v[int(TRAY_PCT * (len(v) - 1))]
+    # the newest day's pieces never fold: what a scan just brought back stays in view (2026-10-14:
+    # a scan stored 50, the median fold hid half of them, and the user saw "74 after 15 minutes").
+    # Folded pieces older than TRAY_MAX_AGE retire quietly so the fold can't grow without bound.
+    newest_day = max((it.get("first_seen") or "" for it in items if not it["isArchived"] and not it["isLiked"]), default="")
+    aged = (date.today() - timedelta(days=TRAY_MAX_AGE)).isoformat()
+    n_fold_aged = 0; kept2 = []
     for it in items:
         th = tray_thr.get(it.get("category"))
-        it["tail"] = bool(th is not None and it["_s1"] is not None and it["_s1"] < th and not it["isArchived"] and not it["isLiked"] and not it.get("fromScan"))
+        live = not it["isArchived"] and not it["isLiked"]
+        fresh = live and (it.get("first_seen") or "") == newest_day
+        it["tail"] = bool(live and not fresh and not it.get("fromScan") and th is not None and it["_s1"] is not None and it["_s1"] < th)
+        if it["tail"] and (it.get("first_seen") or "") < aged:
+            n_fold_aged += 1; continue
+        kept2.append(it)
+    items = kept2
 
     # ---- stage 2: personal vision re-rank of the visible slice. Same judgment quality as the
     # old per-item pass, but bounded: only the top N un-acted items, and each (user,item) verdict
@@ -738,7 +755,7 @@ def build_for_user(uid, taste, catalog):
     if not DRY_RUN: api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
     print(f"  user {uid[:8]}: {total} to review ({n_tray} in the tray{', ' + str(len(shelf_items)) + ' on the search shelf' if shelf_items else ''}), {n_liked} liked, {n_arch} archived | "
           f"stage-2 vision on {n_stage2} head items ({n_fresh} fresh) | attrs backfilled {n_backfill} | {n_gated_out} gated out across {len(gated)} combos, "
-          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall ({n_gems} gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_sold} sold hidden | {n_steals} steals"
+          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall ({n_gems} gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_sold} sold hidden | {n_fold_aged} fold-retired | {n_steals} steals"
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():

@@ -242,8 +242,9 @@ def main():
             raise RuntimeError(f"dispatch query HTTP {st_d}")
         if disp:
             # the repo is public: GitHub lists workflow runs without a token
-            req = _ur.Request("https://api.github.com/repos/vegastudiolab/vega-closet/actions/workflows/conductor.yml/runs?event=workflow_dispatch&per_page=30",
-                              headers={"User-Agent": "trm-nucleus", "Accept": "application/vnd.github+json"})
+            gh_headers = {"User-Agent": "trm-nucleus", "Accept": "application/vnd.github+json"}
+            if os.environ.get("GH_TOKEN"): gh_headers["Authorization"] = "Bearer " + os.environ["GH_TOKEN"]   # the runner's token: the anonymous limit is shared by every Actions runner and 403s
+            req = _ur.Request("https://api.github.com/repos/vegastudiolab/vega-closet/actions/workflows/conductor.yml/runs?event=workflow_dispatch&per_page=30", headers=gh_headers)
             with _ur.urlopen(req, timeout=30) as r: gh = json.loads(r.read().decode())
             runs_d = [x for x in gh.get("workflow_runs", []) if (x.get("created_at") or "") >= d1]
             if len(runs_d) < len(disp):

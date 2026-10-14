@@ -102,4 +102,5 @@ jobs:
         env:
           SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          GH_TOKEN:            ${{ secrets.GITHUB_TOKEN }}     # read-only: lets the dispatch alert list runs without the anonymous rate limit
         run: python pipeline/build_nucleus.py

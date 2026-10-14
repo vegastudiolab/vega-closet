@@ -722,7 +722,7 @@ def main():
     # scan scope: an explicit GENDER (a woman's manual scan) hits just her side; the daily run
     # (GENDER unset) scrapes BOTH so the shared catalog serves everyone. Union of users' genders
     # keeps us from scraping women's if no woman exists yet.
-    user_genders = {norm((t.get("payload") or {}).get("gender")) or "men" for t in taste_rows} or {"men"}
+    user_genders = {norm((t.get("payload") or {}).get("gender")) or "men" for t in scope_rows} or {"men"}   # a manual scan scrapes the requester's side only (women's SSENSE alone was 5 of a 9-minute scan)
     genders = [GENDER] if GENDER in ("men", "women") else sorted(g for g in ("men", "women") if g in user_genders)
     print(f"scanning genders: {genders}")
 
@@ -809,11 +809,18 @@ def main():
     tw = (payload.get("signals", {}) or {}).get("tasteWeights") or {}
     brates = (payload.get("signals", {}) or {}).get("brandRates") or {}
     if tw and not NO_VISION:
+        lanes_ = (payload.get("signals", {}) or {}).get("brandLanes", {}) or {}
+        gated_lanes = set(lanes_.get("gatedCombos") or []); deep_lanes = {norm(b) for b in (lanes_.get("deepGatedBrands") or [])}
         for r in rows:
             a = r.get("attrs")
             if a:
                 br = brates.get((r.get("brand") or "").lower(), 0.25)
                 r["_s1"] = taste_model.predict(tw, taste_model.featurize(a, r.get("brand"), r.get("price"), r.get("category"), br))
+                # the feed gates these lanes (brand x category he passes on) unless they rank in his top
+                # band — the scan cap must know that too, or it spends its slots on pieces the feed hides
+                # (2026-10-14: 21 of 50 stored pieces never reached the feed)
+                if f"{norm(r.get('brand'))}|{norm(r.get('category'))}" in gated_lanes or norm(r.get("brand")) in deep_lanes:
+                    r["_s1"] *= 0.5
 
     # MIN_NEW is a TARGET, not just a floor: the top-up loop pulls brands until we reach it,
     # and here we cap at exactly N — his best N by taste, or the newest N on a raw scan.
