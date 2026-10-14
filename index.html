@@ -958,6 +958,8 @@
     const VIEW = { status:"feed", cat:"all", sz:"all", price:"all", plat:"all", sort:"default" };
     let SEARCH_Q = "";
     const cards = () => [...document.querySelectorAll(".card")];
+    // a card folded into its section's tray: there, but not in view until the section is opened
+    function isFolded(c){ const sec = c.closest(".section"); return c.dataset.tail==="1" && !(sec && sec.classList.contains("tray-open")); }
     const STAT  = [["feed","feed"],["picks","picks"],["steals","steals"],["liked","liked"],["cart","cart"],["archived","archived"],["all","all"]];
     const CATS  = [["all","all"],["outerwear","outerwear"],["tops","tops"],["pants","bottoms"],["shoes","footwear"],["accessories","accessories"]];
     const PLATS = [["all","all"],["grailed","grailed"],["the realreal","therealreal"],["ssense","ssense"]];
@@ -986,7 +988,7 @@
     }
     const DIMS = ["status","cat","sz","price","plat"];
     function matchExcept(c,except){ for (const d of DIMS){ if (d===except) continue; if (!dimMatch(d,VIEW[d],c)) return false; } return true; }
-    function chipCount(dim,val,cs){ return cs.filter(c=>matchExcept(c,dim)&&dimMatch(dim,val,c)).length; }
+    function chipCount(dim,val,cs){ return cs.filter(c=>!isFolded(c)&&matchExcept(c,dim)&&dimMatch(dim,val,c)).length; }   // counts what's in view; folded cards show on their section's "+ more"
     let FILTERS_OPEN = false;
     function renderFilters(){
       const cs = cards();   // one DOM query for all ~30 chip counts, not one each
@@ -1033,17 +1035,17 @@
     function applyFilters(){
       const q = SEARCH_Q.toLowerCase().trim();
       const toks = q ? q.split(/\s+/).filter(Boolean) : [];          // every word must appear, any order
-      let shown = 0;
+      let shown = 0, foldedTotal = 0;
       const visibleCards = [];
       cards().forEach(c=>{
         const s = c.dataset.search||"";                                // precomputed at render — no per-keystroke joins
         const textOk = !toks.length || toks.every(t=>s.includes(t));
-        const sec = c.closest(".section");
-        const trayOk = c.dataset.tail!=="1" || (sec && sec.classList.contains("tray-open"));
+        const trayOk = !isFolded(c);
         const base = textOk && matchExcept(c,null);
         const v = base && trayOk;
         c.style.display = v ? "" : "none";
         c.dataset.folded = (base && !trayOk) ? "1" : "0";              // hidden only by the tray fold
+        if (base && !trayOk) foldedTotal++;
         if(v){ shown++; visibleCards.push(c); }
       });
       document.querySelectorAll(".section").forEach(sec=>{
@@ -1066,7 +1068,8 @@
       if (em){
         if (shown===0){ em.style.display="block";
           em.textContent = q ? "no results for \""+SEARCH_Q+"\". try a different search."
-                         : VIEW.status==="feed"     ? "you're all caught up. tap scan now for fresh pieces, or 'all' to browse everything you've saved."
+                         : VIEW.status==="feed"     ? (foldedTotal ? "nothing left in view. " + foldedTotal + " more sit folded in the sections below — tap + more on a section to open it, or scan now for fresh pieces."
+                                                                   : "you're all caught up. tap scan now for fresh pieces, or 'all' to browse everything you've saved.")
                          : VIEW.status==="picks"    ? "no picks yet — they land with the next rebuild."
                          : VIEW.status==="steals"   ? "no steals right now — a steal is a piece you'd rate, priced well under what its house usually lists for."
                          : VIEW.status==="liked"    ? "nothing loved here yet."
@@ -1277,7 +1280,8 @@
         if (ue) throw ue;
         toClear.forEach(c => c.remove());
         applyFilters();
-        ok.textContent = "cleared "+urls.length+" pieces — they can return on future scans";
+        const foldedLeft = cards().filter(c => c.dataset.liked==="0" && c.dataset.archived==="0" && isFolded(c)).length;
+        ok.textContent = "cleared "+urls.length+" pieces" + (foldedLeft ? " — "+foldedLeft+" more stay folded in the sections below; open a section's + more to see them, clear again to drop them too" : " — they can return on future scans");
         setTimeout(()=>{ ok.textContent=""; },5000);
       } catch(e){ console.error(e); ok.textContent = "couldn't clear — try again"; }
     };
