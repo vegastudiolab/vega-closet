@@ -122,7 +122,7 @@ def vision_fit(anthropic_key, image_url, brief):
          "tools": [VFIT_TOOL], "tool_choice": {"type": "tool", "name": "score"},
          "messages": [{"role": "user", "content": [
              {"type": "image", "source": {"type": "url", "url": image_url}},
-             {"type": "text", "text": "Taste rubric:\n" + brief[:4000] + "\n\nScore this piece 0-1 against the rubric and tag why."}]}]},
+             {"type": "text", "text": "Taste rubric:\n" + brief[:6000] + "\n\nScore this piece 0-1 against the rubric and tag why."}]}]},
         {"x-api-key": anthropic_key, "anthropic-version": "2023-06-01"})
     _track("stage2_vision", "claude-haiku-4-5-20251001", st, r)
     if st != 200 or not isinstance(r, dict): return None

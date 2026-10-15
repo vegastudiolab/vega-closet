@@ -24,6 +24,7 @@ TRAY_MAX_AGE = 14        # folded pieces older than this many days retire from t
 SHELF_DAYS = 2           # a search shelf survives this many days of nightly rebuilds (or until the next search)
 SHELF_MIN = 3            # a shelf with fewer live pieces than this is done and disappears
 UPLOAD_MULT = 3          # wardrobe uploads count this many times their bucket weight (receipts/rotation 3, grails 2, looks 1), capped at the user's tap count
+DIR_NUDGE = 0.06         # taste.direction: a stated preference moves a card about one decile up or down (Charles 2026-10-15: slim in, oversized/boxy out)
 DRY_RUN = bool(os.environ.get("DRY_RUN", "").strip())   # build + print, write nothing (local verification)
 _KIDS = re.compile(r"\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress|t-?shirt|tee)\b", re.I)
 _JKT  = re.compile(r"\b(?:track|coach|bomber|denim|leather|puffer|shirt|work|chore|trucker|varsity|harrington) jackets?\b|\bwindbreaker\b|\banorak\b", re.I)
@@ -131,6 +132,14 @@ def build_for_user(uid, taste, catalog):
     sigs = fetch_all("signals", "url,action,brand,category,reasons,price,created_at", f"&user_id=eq.{uid}")
     since = (datetime.now(timezone.utc) - timedelta(days=ACTIVE_DAYS)).isoformat()
     active_user = any((x.get("created_at") or "") >= since for x in sigs)     # tapped recently -> gets fresh AI spend
+    # stated direction (taste.direction): what the user TOLD us, which beats what old photos or old
+    # taps imply. Silhouettes they prefer get a nudge up, ones they've moved on from a nudge down,
+    # and wardrobe photos of de-prioritized cuts lose their extra weight in the fit.
+    _dir = (taste.get("direction") or {}).get("silhouettes") or {}
+    prefer_sil = {norm(x) for x in (_dir.get("prefer") or []) if x}
+    depri_sil = {norm(x) for x in (_dir.get("deprioritize") or []) if x}
+    def _sil(a):
+        v = taste_model._norm_one((a or {}).get("silhouette")); return norm(v) if v else ""
     liked_ids, passed_ids, carted_ids = set(), set(), set()
     liked_brands, passed_brands = Counter(), Counter()
     liked_tags, passed_tags = Counter(), Counter()
@@ -289,7 +298,8 @@ def build_for_user(uid, taste, catalog):
     n_upload_rows = 0
     for u in up_store["digested"]:
         row = {"attrs": u["attrs"], "brand": "", "price": None, "category": None, "url": "upload:" + u["path"]}
-        for _ in range(int(round(UPLOAD_W.get(u["bucket"], 1) * mult))):
+        m = 1.0 if _sil(u["attrs"]) in depri_sil else mult          # a photo of a cut they've moved on from counts once, not three times
+        for _ in range(int(round(UPLOAD_W.get(u["bucket"], 1) * m))):
             labeled.append((1, row)); n_upload_rows += 1
     # prior-anchored fit: works at ANY history size — pure house-prior at 0 taps, personal as they grow
     weights, pairs = taste_model.fit_user_weights(labeled, prior=PRIOR)
@@ -307,7 +317,8 @@ def build_for_user(uid, taste, catalog):
         if len(rows_k) >= PERCAT_MIN:
             wk, pk = taste_model.fit_user_weights(rows_k, prior=PRIOR)
             w_cat[k] = wk; brate_cat[k] = taste_model.brand_rates(pk) if pk else brate
-    print(f"  stage-1 weights: {n_taps} taps + {n_clears} clears@{CLEAR_WEIGHT} + {n_upload_rows} wardrobe rows ({len(up_store['digested'])} uploads x{mult:.1f}), lambda {lam:.2f} personal ({'young' if young else 'mature'} model, {len(weights)} features) | per-category models: {sorted(w_cat)}")
+    print(f"  stage-1 weights: {n_taps} taps + {n_clears} clears@{CLEAR_WEIGHT} + {n_upload_rows} wardrobe rows ({len(up_store['digested'])} uploads x{mult:.1f}), lambda {lam:.2f} personal ({'young' if young else 'mature'} model, {len(weights)} features) | per-category models: {sorted(w_cat)}"
+          + (f" | direction: prefer {sorted(prefer_sil)}, de-prioritize {sorted(depri_sil)}" if (prefer_sil or depri_sil) else ""))
 
     def stage1(it):
         a = it.get("attrs")
@@ -341,6 +352,10 @@ def build_for_user(uid, taste, catalog):
         url = it["url"]
         if url in carted_ids: s += 0.45
         elif url in liked_ids: s += 0.30
+        if prefer_sil or depri_sil:
+            sv = _sil(it.get("attrs"))
+            if sv in prefer_sil: s += DIR_NUDGE
+            elif sv in depri_sil: s -= DIR_NUDGE
         return round(s, 4)
 
     # THE hard promise: nothing that doesn't fit THIS user ever reaches their feed. Sizes are data
@@ -550,8 +565,12 @@ def build_for_user(uid, taste, catalog):
     brief = vb if isinstance(vb, str) else (vb.get("brief") if isinstance(vb, dict) and isinstance(vb.get("brief"), str) else (json.dumps(vb)[:4000] if vb else None))
     n_stage2 = 0; n_fresh = 0
     if brief:
+        # verdicts judged against an older rubric are stale once the rubric changes (taste.meta.briefChangedAt):
+        # they drop out of the cache and the head gets re-judged within the fresh budget
+        brief_changed = (taste.get("meta") or {}).get("briefChangedAt") or ""
         cache = {r["url"]: (r.get("vfit"), r.get("tags") or []) for r in
-                 fetch_all("user_scores", "url,vfit,tags", f"&user_id=eq.{uid}")}
+                 fetch_all("user_scores", "url,vfit,tags,scored_at", f"&user_id=eq.{uid}")
+                 if (r.get("scored_at") or "") >= brief_changed}
         unacted = [it for it in items if not it["isArchived"] and not it["isLiked"] and "unrated" not in (it.get("reasons") or [])]
         unacted.sort(key=lambda x: -x["score"])
         head = unacted[:HEAD_VISION]                # vision touches only what reaches the top of the feed
