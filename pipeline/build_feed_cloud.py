@@ -23,6 +23,7 @@ TRAY_KEEP = 8            # a section with cards never shows fewer than this many
 TRAY_MAX_AGE = 14        # folded pieces older than this many days retire from the feed
 SHELF_DAYS = 2           # a search shelf survives this many days of nightly rebuilds (or until the next search)
 SHELF_MIN = 3            # a shelf with fewer live pieces than this is done and disappears
+UPLOAD_MULT = 3          # wardrobe uploads count this many times their bucket weight (receipts/rotation 3, grails 2, looks 1), capped at the user's tap count
 DRY_RUN = bool(os.environ.get("DRY_RUN", "").strip())   # build + print, write nothing (local verification)
 _KIDS = re.compile(r"\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress|t-?shirt|tee)\b", re.I)
 _JKT  = re.compile(r"\b(?:track|coach|bomber|denim|leather|puffer|shirt|work|chore|trucker|varsity|harrington) jackets?\b|\bwindbreaker\b|\banorak\b", re.I)
@@ -278,11 +279,18 @@ def build_for_user(uid, taste, catalog):
         if (norm(c0.get("gender")) or "men") != ugender or (ugender == "men" and c0.get("category") in ("dresses", "skirts")):
             continue
         labeled.append((0, c0, CLEAR_WEIGHT)); n_clears += 1
-    # archive uploads join the fit as weighted positives (what you own outweighs what you tap)
+    # archive uploads join the fit as weighted positives (what you own outweighs what you tap).
+    # Backtest 2026-10-15 on Charles's 7 cloud uploads: at the old weights they were 0.1% of the
+    # training mass (AUC 0.683); tripled, and present in the per-category fits too, AUC 0.711 and
+    # 15 of 74 held-out likes in a 300-card feed (was 12). The multiplier backs off so uploads can
+    # never outweigh a user's own taps.
+    raw_w = sum(UPLOAD_W.get(u["bucket"], 1) for u in up_store["digested"])
+    mult = UPLOAD_MULT if raw_w * UPLOAD_MULT <= max(n_taps, 40) else max(1.0, max(n_taps, 40) / max(raw_w, 1))
+    n_upload_rows = 0
     for u in up_store["digested"]:
         row = {"attrs": u["attrs"], "brand": "", "price": None, "category": None, "url": "upload:" + u["path"]}
-        for _ in range(UPLOAD_W.get(u["bucket"], 1)):
-            labeled.append((1, row))
+        for _ in range(int(round(UPLOAD_W.get(u["bucket"], 1) * mult))):
+            labeled.append((1, row)); n_upload_rows += 1
     # prior-anchored fit: works at ANY history size — pure house-prior at 0 taps, personal as they grow
     weights, pairs = taste_model.fit_user_weights(labeled, prior=PRIOR)
     brate = taste_model.brand_rates(pairs) if pairs else (lambda b: 0.25)
@@ -294,11 +302,12 @@ def build_for_user(uid, taste, catalog):
     # the global, lifted tops to 0.63 and outerwear 0.62 -> 0.65 on the same held-out taps.
     w_cat, brate_cat = {}, {}
     for k in ("outerwear", "tops", "bottoms", "footwear", "dresses", "skirts"):
-        rows_k = [t for t in labeled if t[1].get("category") == k]
+        # wardrobe uploads carry no category: what he owns speaks to every category's fit
+        rows_k = [t for t in labeled if t[1].get("category") == k or str(t[1].get("url", "")).startswith("upload:")]
         if len(rows_k) >= PERCAT_MIN:
             wk, pk = taste_model.fit_user_weights(rows_k, prior=PRIOR)
             w_cat[k] = wk; brate_cat[k] = taste_model.brand_rates(pk) if pk else brate
-    print(f"  stage-1 weights: {n_taps} taps + {n_clears} clears@{CLEAR_WEIGHT}, lambda {lam:.2f} personal ({'young' if young else 'mature'} model, {len(weights)} features) | per-category models: {sorted(w_cat)}")
+    print(f"  stage-1 weights: {n_taps} taps + {n_clears} clears@{CLEAR_WEIGHT} + {n_upload_rows} wardrobe rows ({len(up_store['digested'])} uploads x{mult:.1f}), lambda {lam:.2f} personal ({'young' if young else 'mature'} model, {len(weights)} features) | per-category models: {sorted(w_cat)}")
 
     def stage1(it):
         a = it.get("attrs")
