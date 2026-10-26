@@ -831,6 +831,11 @@ def main():
         print(f"target {MIN_NEW}: kept {len(rows)} of what was found")
 
     for r in rows: r.pop("_s1", None)              # rank-time only — never stored
+    # PostgREST bulk insert needs IDENTICAL keys on every row ("All object keys must match").
+    # Lazy attrs leaves most rows without "attrs": 0 of ~1,900 stored every nightly 10-15..10-25.
+    all_keys = set().union(*(r.keys() for r in rows)) if rows else set()
+    for r in rows:
+        for k in all_keys: r.setdefault(k, None)
 
     inserted = 0
     for i in range(0, len(rows), 500):
