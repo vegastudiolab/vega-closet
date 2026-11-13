@@ -462,13 +462,44 @@ def build_for_user(uid, taste, catalog):
     # liked/carted) only surface as GEMS — top-5% of their fitted taste model — honoring
     # "don't miss a gem, judge by taste not brand" without flooding the feed with strangers.
     # Users with no loved list yet (mid-onboarding) keep the full browse. Raw scans stay exempt.
+    # avoid = never show, from any source, gem or not (taste.brands.avoid). A brand only joins the
+    # wall through likes after TWO of them (2026-11-12: one Amiri like put 26 Amiri cards in view).
+    avoid_b = {norm(b) for b in ((taste.get("brands") or {}).get("avoid") or []) if b}
+    def brand_avoided(b):
+        nb = norm(b)
+        return bool(nb) and any(a == nb or (len(a) > 3 and re.search(r"\b" + re.escape(a) + r"\b", nb)) for a in avoid_b)
+    like_n = Counter(norm(x.get("brand")) for x in sigs if x["action"] in ("liked", "carted") and x.get("brand"))
     my_brands = {norm(b) for b in ((taste.get("brands") or {}).get("loved") or []) if b}
-    my_brands |= {norm(x.get("brand")) for x in sigs if x["action"] in ("liked", "carted") and x.get("brand")}
+    my_brands |= {b for b, n in like_n.items() if n >= 2}
+    my_brands -= avoid_b
     def brand_mine(b):
         nb = norm(b)
-        if not nb: return False
+        if not nb or brand_avoided(b): return False
         if nb in my_brands: return True
         return any(len(m) > 4 and (m in nb or nb in m) for m in my_brands)  # Rick Owens ~ Rick Owens DRKSHDW
+    # brand rules (taste.brands.rules): e.g. {"nike": {"apparel_min_statement": 4}} — Nike clothing
+    # only when it's a statement piece or a collab; footwear judged normally (2026-11-12: 44 casual
+    # vintage Nike tops in view; he passed 75 of 83 Nike pieces)
+    brand_rules = {norm(k): v for k, v in (((taste.get("brands") or {}).get("rules")) or {}).items()}
+    def rule_blocks(it):
+        nb = norm(it.get("brand"))
+        for k, r in brand_rules.items():
+            if not (nb == k or re.search(r"\b" + re.escape(k) + r"\b", nb)): continue
+            if it.get("category") == "footwear": return False
+            ttl = it.get("title") or ""
+            if r.get("allow_collabs", True) and (re.search(r"\s[x×]\s", ttl) or "×" in nb or " x " in nb): return False
+            try: st_ = float(taste_model._norm_one((it.get("attrs") or {}).get("statement")) or (it.get("attrs") or {}).get("statement") or 0)
+            except Exception: st_ = 0
+            era_ = (taste_model._norm_one((it.get("attrs") or {}).get("era")) or "").lower()
+            vint = bool(re.search(r"vintage|\b(?:80|90)s\b|y2k|\bvtg\b|retro", ttl, re.I)) or era_ in ("vintage", "90s", "80s", "y2k")
+            need = float(r.get("vintage_min_statement", 5)) if vint else float(r.get("apparel_min_statement", 4))
+            return st_ < need
+        return False
+    n_avoided = 0
+    for it in items:
+        if not it["isArchived"] and not it["isLiked"] and (brand_avoided(it.get("brand")) or rule_blocks(it)):
+            it["_drop"] = True; n_avoided += 1
+    items = [it for it in items if not it.get("_drop")]
     n_gated_out = 0
     n_foreign_out = 0
     # results shelf (manual keyword / category / brand scan): the pieces that scan stored come back
@@ -762,7 +793,7 @@ def build_for_user(uid, taste, catalog):
     # taste write-back: promote brands liked >=3x (canonicalize), refresh tallies, never cool a brand
     loved = taste.get("brands", {}).get("loved", []); lset = {norm(x) for x in loved}; promoted = []
     for b, n in liked_brands.items():
-        if n >= 3 and b and b not in lset:
+        if n >= 3 and b and b not in lset and not brand_avoided(b):
             canon = next((it["brand"] for it in catalog if norm(it["brand"]) == b), b)
             loved.append(canon); lset.add(b); promoted.append(canon)
     s = taste.setdefault("signals", {}); s.pop("cooledBrands", None)
@@ -783,7 +814,7 @@ def build_for_user(uid, taste, catalog):
     if not DRY_RUN: api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
     print(f"  user {uid[:8]}: {total} to review ({n_tray} in the tray{', ' + str(len(shelf_items)) + ' on the search shelf' if shelf_items else ''}), {n_liked} liked, {n_arch} archived | "
           f"stage-2 vision on {n_stage2} head items ({n_fresh} fresh) | attrs backfilled {n_backfill} | {n_gated_out} gated out across {len(gated)} combos, "
-          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall ({n_gems} gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_sold} sold hidden | {n_fold_aged} fold-retired | {n_steals} steals"
+          f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall ({n_gems} gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_sold} sold hidden | {n_fold_aged} fold-retired | {n_avoided} avoided/brand-rule | {n_steals} steals"
           + (f" | promoted {promoted}" if promoted else ""))
 
 def main():
