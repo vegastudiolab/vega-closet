@@ -11,6 +11,7 @@
 import os, sys, json, time, re, random, urllib.request, urllib.error, urllib.parse
 from datetime import date
 import taste_model
+from collections import Counter
 
 # ---------- config (env, with local .env fallback) ----------
 def _loadenv():
@@ -743,12 +744,27 @@ def main():
     with ThreadPoolExecutor(max_workers=max(1, len(jobs))) as ex:
         for out in ex.map(_run, jobs): found += out
     print(f"scraped {len(found)} raw items")
+    if "grailed" in SOURCES and not QUERY and not override and not CATEGORY:
+        try: found += style_lane(taste_rows, requester)
+        except Exception as e: print("  style lane failed (continuing):", e)
 
     # cleared stays cleared (Charles 2026-09-22): a scan re-finding a dismissed listing no longer
     # restores it. The feed builder treats clears as half-weight dislikes and hides the same piece
     # in the same size; a different size or color is a different listing and still comes through.
 
     rows, seen = filter_new(found, existing, loved)
+    _tag = {it["url"]: it.get("_tag") for it in found if it.get("_tag")}
+    if _tag:
+        cnt = Counter(); kept_ = []
+        for r in rows:
+            t_ = _tag.get(r["url"])
+            if t_:
+                if cnt[t_] >= STYLE_MAX: continue
+                cnt[t_] += 1; r["reasons"] = (r.get("reasons") or []) + [t_]
+            r.pop("_tag", None); kept_.append(r)
+        rows = kept_
+        print(f"  style lane: {dict(cnt)} new pieces kept (cap {STYLE_MAX}/user)")
+    for r in rows: r.pop("_tag", None)
 
     # TRR listings this scan saw as no-longer-available that we already hold: tag them sold
     # (reasons += "sold" — the same marker mechanism as "unrated") so no feed shows them again
@@ -929,6 +945,89 @@ def size_bucket(it):
     if "xl" in s or "54" in s: return "XL"
     if "l" in s or "52" in s: return "L"
     return "other"
+
+
+# ---------- STYLE LANE (2026-11-12 R&D: brand-restricted scans cap the range. Style searches mined
+# from a user's own likes, with NO designer filter, cleared the taste bar 31% of the time vs 10%
+# for the loved-brand pool, and 309 of 394 hits came from brands outside the wall). Free: Grailed
+# Algolia only. Each find is tagged "discovery:<uid8>" so THAT user's builder lets it past the
+# brand wall (still subject to never-show, brand rules, sizes, gates and the taste ranking).
+STYLE_QUERIES = int(os.environ.get("STYLE_QUERIES", "14"))
+STYLE_MAX = int(os.environ.get("STYLE_MAX", "300"))       # new style-lane pieces per user per run (attrs cost ~$0.004 each)
+_STYLE_STOP = set("the a an and of with in on for size new mens men's men women womens xl l m s xxl xs vintage authentic tags w/ by x "
+                  "rare nwt bnwt brand used good great condition fits fit like".split())
+def style_queries(uid, payload, n=STYLE_QUERIES):
+    from datetime import datetime, timezone, timedelta
+    since = (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
+    st, sg = sb("GET", f"/rest/v1/signals?select=url&user_id=eq.{uid}&action=in.(liked,carted)&created_at=gte.{urllib.parse.quote(since)}&limit=3000")
+    urls_ = [r["url"] for r in sg] if st == 200 and isinstance(sg, list) else []
+    titles = []
+    for i in range(0, len(urls_), 50):
+        st2, rr = sb("GET", "/rest/v1/catalog?select=title,brand&url=in.(" + ",".join(urllib.parse.quote(u, safe="") for u in urls_[i:i+50]) + ")")
+        if st2 == 200 and isinstance(rr, list): titles += rr
+    brands_l = {norm(b) for b in ((payload.get("brands") or {}).get("loved") or [])} | {norm(r.get("brand")) for r in titles}
+    btoks = {t for b in brands_l for t in re.findall(r"[a-z]+", b)}
+    bg = Counter()
+    for r in titles:
+        w = [t for t in re.findall(r"[a-z]+", (r.get("title") or "").lower()) if t not in _STYLE_STOP and t not in btoks and len(t) > 2]
+        bg.update(" ".join(p) for p in zip(w, w[1:]))
+    q = [k for k, c in bg.most_common(80) if c >= 2][:n]
+    # stated direction (taste.direction): "slim" + the garments he likes most
+    pref = (((payload.get("direction") or {}).get("silhouettes") or {}).get("prefer") or [])[:1]
+    garments = [g for g in ("leather jacket", "jeans", "trousers", "bomber jacket", "knit", "shirt") if any(g.split()[0] in k for k in q)][:4]
+    for p_ in pref:
+        for g in garments: q.append(f"{p_} {g}")
+    return list(dict.fromkeys(q))
+def style_lane(taste_rows, requester=None):
+    from datetime import datetime, timezone, timedelta
+    since = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    st, sr = sb("GET", f"/rest/v1/signals?select=user_id&created_at=gte.{urllib.parse.quote(since)}&limit=20000")
+    active = {r["user_id"] for r in sr} if st == 200 and isinstance(sr, list) else set()
+    targets = [t for t in taste_rows if (t.get("user_id") == requester if requester else t.get("user_id") in active)]
+    out = []
+    for t in targets:
+        p = t.get("payload") or {}; uid = t["user_id"]
+        g = norm(p.get("gender")) or "men"; sz = p.get("sizes") or {}
+        toks = set()
+        for k in ("tops", "outerwear", "waist", "shoes"): toks |= {norm(x) for x in (sz.get(k) or [])}
+        for ex in (sz.get("exceptions") or []): toks |= {norm(x) for x in (ex.get("add") or [])}
+        if not toks: continue
+        avoid = {norm(b) for b in ((p.get("brands") or {}).get("avoid") or [])}
+        facet = [["size:" + x for x in sorted(toks)], ["condition:is_new", "condition:is_gently_used"],
+                 ["department:" + ("womenswear" if g == "women" else "menswear")]]
+        qs = style_queries(uid, p)
+        rxc = {c: _size_re({norm(x) for x in (v or []) if x}) for c, v in (("tops", sz.get("tops")), ("outerwear", sz.get("outerwear") or sz.get("tops")),
+               ("bottoms", sz.get("waist")), ("footwear", sz.get("shoes")))}
+        def fits_(cat, size):                               # this user's own per-category sizes, not the union
+            x = rxc.get(cat); s_ = norm(size)
+            if cat == "accessories": return True
+            return bool(x and s_ and x.search(s_))
+        seen_, mine = set(), []
+        per_q = []
+        for q in qs:
+            r = grailed_algolia(facet, page=0, hpp=100, query=q)
+            hits = []
+            for h in (r.get("hits") or []):
+                if h.get("sold"): continue
+                dn = h.get("designer_names") or ((h.get("designers") or [{}])[0] or {}).get("name") or ""
+                if not dn or any(a and a in norm(dn) for a in avoid): continue
+                cond = {"is_new": "new", "is_gently_used": "gently used"}.get(norm(h.get("condition")))
+                if not cond: continue
+                iid = str(h.get("id") or h.get("objectID") or "")
+                if iid in seen_: continue
+                seen_.add(iid); title = h.get("title", "") or ""; gcat = h.get("category")
+                if not fits_(gcat if gcat in ALLOWED_CATS else infer_cat(title), h.get("size", "")): continue
+                hits.append({"url": "https://www.grailed.com/listings/" + iid, "id": iid, "platform": "grailed", "brand": dn, "title": title,
+                             "category": (gcat if gcat in ALLOWED_CATS else infer_cat(title)), "price": h.get("price"),
+                             "size": h.get("size", ""), "condition": cond, "gender": g, "_tag": "discovery:" + uid[:8],
+                             "image": ((h.get("cover_photo") or {}).get("url") or "").split("?")[0]})
+            per_q.append(hits)
+        while any(per_q):                                   # interleave queries so no single search dominates
+            for hl in per_q:
+                if hl: mine.append(hl.pop(0))
+        print(f"  style lane {uid[:8]}: {len(qs)} searches {qs[:8]}{'...' if len(qs) > 8 else ''} -> {len(mine)} listings")
+        out += mine
+    return out
 
 if __name__ == "__main__":
     main()

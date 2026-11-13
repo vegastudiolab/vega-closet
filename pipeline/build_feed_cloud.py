@@ -97,6 +97,7 @@ def is_style(t):
     t = norm(t)
     if not t or t in _SKIP: return False
     if re.search(r"size|waist|^us \d|^eu \d|^it \d|^uk \d", t): return False
+    if t.startswith("discovery:"): return False
     return True
 
 _ALL_SECTIONS = {
@@ -544,7 +545,7 @@ def build_for_user(uid, taste, catalog):
     for it in items:
         if not it["isArchived"] and not it["isLiked"] and "unrated" not in (it.get("reasons") or []):
             b, cc = norm(it.get("brand")), norm(it.get("category"))
-            if my_brands and not brand_mine(it.get("brand")):
+            if my_brands and not brand_mine(it.get("brand")) and ("discovery:" + uid[:8]) not in (it.get("reasons") or []):
                 v = it["_s1"]; gt = gem_thr.get(it.get("category"))
                 if v is not None and gt is not None and v >= gt:
                     gems.setdefault(it.get("category"), []).append(it)      # capped below

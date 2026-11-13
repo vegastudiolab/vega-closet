@@ -99,6 +99,8 @@
   .sec-h { display:flex; align-items:baseline; gap:8px; margin-bottom:2px; }
   .sec-h h2 { font-family:var(--serif); font-size:25px; font-weight:400; text-transform:lowercase; }
   .sec-h .cnt { font-size:11px; font-weight:500; background:var(--acc); border:1px solid var(--line); padding:1px 6px; color:var(--ink); }
+  .blockb { display:block; margin:6px 0 0; padding:0; background:none; border:0; color:var(--dim); font:inherit; font-size:9px; letter-spacing:0.08em; text-transform:uppercase; text-decoration:underline; cursor:pointer; text-align:left; }
+  .blockb.armed { color:#b3261e; }
   .sec-sub { font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--dim); margin-bottom:12px; }
   /* the tray: each section folds its weaker half behind one button (never picks or steals) */
   .tray-btn { margin-left:auto; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; background:transparent;
@@ -653,6 +655,9 @@
     <div class="houses-list" id="modelHouses"></div>
     <div class="fit-mono" style="margin-top:6px;"><span id="modelHouseCount">0</span> HOUSES LOGGED</div>
 
+    <div class="fit-lbl">never show — tap a brand to let it back in</div>
+    <div class="fit-chips" id="modelAvoid"><span class="fit-mono">none</span></div>
+
     <div class="fit-lbl">the archive — add more, anytime</div>
     <div class="arch-grid">
       <div class="arch-tile" data-mbucket="receipts"><div class="t">[ the receipts ]</div><div class="d">what you actually bought.</div><div class="c" data-mcount>tap to add</div></div>
@@ -933,6 +938,7 @@
             <button class="act cart" data-act="cart" type="button">+<span class="alab"> cart</span></button>
             <button class="act pass" data-act="pass" type="button">✕<span class="alab"> pass</span></button>
           </div>
+          <button class="blockb" data-block="1" type="button">never show ${esc(it.brand||"this brand")}</button>
           <a class="view" href="${href}" target="${PWA ? '_self' : '_blank'}" rel="noopener">view on ${plat} →</a>
         </div>
       </div>`;
@@ -1199,6 +1205,32 @@
           return;
         }
       }
+      const bb=e.target.closest(".blockb");
+      if (bb){
+        const cEl=bb.closest(".card"); const u=decodeURIComponent(cEl.dataset.url||""); const brand=(ITEM_OF[u]||{}).brand||"";
+        const ok=document.getElementById("sigok");
+        if (!brand){ ok.textContent="no brand on this piece"; return; }
+        if (!bb.classList.contains("armed")){                       // two taps: no accidental bans
+          bb.classList.add("armed"); bb.textContent="tap again: never show "+brand;
+          setTimeout(()=>{ bb.classList.remove("armed"); bb.textContent="never show "+brand; }, 3500); return;
+        }
+        try {
+          const { data: t, error: ge } = await sb.from('taste').select('payload').eq('user_id', userId).single();
+          if (ge) throw ge;
+          const p=t.payload||{}; const b=p.brands=p.brands||{}; const lb=brand.toLowerCase();
+          b.avoid=[...new Set([...(b.avoid||[]), brand])];
+          b.loved=(b.loved||[]).filter(x=>x.toLowerCase()!==lb);
+          const { error: ue } = await sb.from('taste').update({ payload: p }).eq('user_id', userId);
+          if (ue) throw ue;
+          let n=0;
+          cards().forEach(c=>{ const x=ITEM_OF[decodeURIComponent(c.dataset.url||"")];
+            if (x && (x.brand||"").toLowerCase()===lb && c.dataset.liked==="0" && c.dataset.archived==="0"){ c.remove(); n++; } });
+          applyFilters();
+          ok.textContent="done: "+brand+" won't show again ("+n+" cards removed). undo under your model, never show.";
+          setTimeout(()=>{ ok.textContent=""; },6000);
+        } catch(err){ console.error(err); ok.textContent="couldn't save that, try again"; }
+        return;
+      }
       const btn=e.target.closest(".act"); if(!btn) return;
       const cardEl=btn.closest(".card");
       const url = decodeURIComponent(cardEl.dataset.url||"");  if(!url) return;   // the card's OWN url (ids collide across sources)
@@ -1354,6 +1386,20 @@
           }
           lovedExtra = [...new Set(existingLoved.map(b => (b||"").toLowerCase()))].filter(b => b && !survey.has(b));
           archCount = ((p.uploads && p.uploads.digested) || []).length;
+          const renderAvoid = (list) => {
+            const el = $("modelAvoid");
+            el.innerHTML = list.length ? list.map(b => '<button class="fit-chip on" data-a="'+esc(b)+'">'+esc(b)+' ✕</button>').join("") : '<span class="fit-mono">none</span>';
+            el.querySelectorAll("[data-a]").forEach(ch => ch.addEventListener("click", async () => {
+              try {
+                const { data: t2, error: ge } = await sb.from("taste").select("payload").eq("user_id", userId).single(); if (ge) throw ge;
+                const p2 = t2.payload || {}; p2.brands = p2.brands || {};
+                p2.brands.avoid = (p2.brands.avoid || []).filter(x => x !== ch.dataset.a);
+                const { error: ue } = await sb.from("taste").update({ payload: p2 }).eq("user_id", userId); if (ue) throw ue;
+                renderAvoid(p2.brands.avoid); $("modelSaved").textContent = ch.dataset.a + " can show again from the next rebuild";
+              } catch(err){ console.error(err); $("modelSaved").textContent = "couldn't save that, try again"; }
+            }, LSN));
+          };
+          renderAvoid((p.brands && p.brands.avoid) || []);
           seedH = 11; existingLoved.forEach(b => { for (const ch of (b||"")) seedH = (seedH*31 + ch.charCodeAt(0)) % 9973; });
         } catch(e){ existingLoved = []; }
         $("modelSig").textContent = sigCount;
