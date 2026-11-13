@@ -106,7 +106,7 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           EMBED_MAX:           '3000'
         run: |
-          pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu   # matched pair: a PyPI torchvision against the CPU torch fails with 'torchvision::nms does not exist'
           pip install -q open_clip_torch pillow numpy
           python pipeline/embed_images.py
 
