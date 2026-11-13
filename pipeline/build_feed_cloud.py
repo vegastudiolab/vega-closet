@@ -485,8 +485,10 @@ def build_for_user(uid, taste, catalog):
         nb = norm(it.get("brand"))
         for k, r in brand_rules.items():
             if not (nb == k or re.search(r"\b" + re.escape(k) + r"\b", nb)): continue
-            if it.get("category") == "footwear": return False
             ttl = it.get("title") or ""
+            bt = r.get("block_terms") or []
+            if bt and re.search(r"\b(?:" + "|".join(re.escape(t) for t in bt) + r")\b", ttl, re.I): return True   # e.g. team kits, even as "collabs"
+            if it.get("category") == "footwear": return False
             if r.get("allow_collabs", True) and (re.search(r"\s[x×]\s", ttl) or "×" in nb or " x " in nb): return False
             try: st_ = float(taste_model._norm_one((it.get("attrs") or {}).get("statement")) or (it.get("attrs") or {}).get("statement") or 0)
             except Exception: st_ = 0
