@@ -117,6 +117,28 @@ def main():
     report("stage-1 global only (pre-audit production)", s1)
     report("+ per-category blend", blend)
     report("+ vision on the head  (CURRENT PRODUCTION)", prod)
+    # image model (clip_emb): fit on train rows that have a fingerprint, score test rows that do
+    try:
+        import clip_rank
+        np_ = clip_rank.np
+        want = list({c["url"] for _, c, _ in train} | {c["url"] for _, c, _ in test}); emb = {}
+        for i in range(0, len(want), 100):
+            for r in get("/rest/v1/clip_emb?select=url,e&url=in.(" + ",".join(urllib.parse.quote(u, safe="") for u in want[i:i+100]) + ")"): emb[r["url"]] = r["e"]
+        tr = [(l, c, w) for l, c, w in train if c["url"] in emb]
+        cov = sum(1 for _, c, _ in test if c["url"] in emb)
+        print(f"image fingerprints: train {len(tr)}/{len(train)} | test {cov}/{len(test)}")
+        if len(tr) >= 300:
+            beta = clip_rank.fit(np_.stack([clip_rank.decode(emb[c["url"]]) for _, c, _ in tr]), np_.array([l for l, _, _ in tr], float), np_.array([w for _, _, w in tr], float))
+            tu = [c["url"] for _, c, _ in test if c["url"] in emb]
+            pr = dict(zip(tu, clip_rank.predict(beta, np_.stack([clip_rank.decode(emb[u]) for u in tu])).tolist()))
+            img = {u: pr.get(u, blend[u]) for u in blend}
+            report("image model (attribute model where no image)", img)
+            imgh = dict(img)
+            for u in sorted(img, key=lambda u: -img[u])[:HEAD_VISION]:
+                if vs.get(u) is not None: imgh[u] = img[u] + VNUDGE * (vs[u] - 0.5)
+            report("image model + vision on the head (NEW PRODUCTION)", imgh)
+    except ImportError:
+        print("(numpy not installed: image model skipped)")
     vis = {u: (vs[u] if vs.get(u) is not None else 0.5) for u in s1}
     report("vision verdicts alone (cached, 0.5 where none)", vis)
     print(f"\ndone in {time.time()-t0:.0f}s — a change ships only if it beats CURRENT PRODUCTION on likes-in-feed without losing AUC.")

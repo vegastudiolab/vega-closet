@@ -581,7 +581,7 @@ def fetch_all(table, select):
     return rows
 
 # sources mislabel accessories as clothing ("Leather Belt" under tops) — retag by title
-_KIDS = re.compile(r"\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress)\b", re.I)
+_KIDS = re.compile(r"\b(?:boys|girls)['’](?=\s)|\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress)\b", re.I)
 _JKT  = re.compile(r"\b(?:track|coach|bomber|denim|leather|puffer|shirt|work|chore|trucker|varsity|harrington) jackets?\b|\bwindbreaker\b|\banorak\b", re.I)
 _ACC = re.compile(r"\b(belt|wallet|card ?holder|scarf|beanie|keychain|sunglasses|bracelet|necklace|ring|earring)s?\b", re.I)
 _ACC_NOT = re.compile(r"belted|belt(ed)?[- ]bag|ring[- ]?(collar|zip)", re.I)

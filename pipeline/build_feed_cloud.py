@@ -7,6 +7,10 @@ import os, sys, re, json, urllib.request, urllib.error, time as _time
 from collections import Counter
 from datetime import date, datetime, timezone, timedelta
 import taste_model
+try:
+    import clip_rank                 # image-similarity ranker (needs numpy); absent -> attribute model only
+except Exception:
+    clip_rank = None
 
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 STAGE2_MAX_FRESH = 400   # ACTIVE users: this many fresh vision verdicts per rebuild (~$1.30 cap), head of the feed first
@@ -25,8 +29,10 @@ SHELF_DAYS = 2           # a search shelf survives this many days of nightly reb
 SHELF_MIN = 3            # a shelf with fewer live pieces than this is done and disappears
 UPLOAD_MULT = 3          # wardrobe uploads count this many times their bucket weight (receipts/rotation 3, grails 2, looks 1), capped at the user's tap count
 DIR_NUDGE = 0.06         # taste.direction: a stated preference moves a card about one decile up or down (Charles 2026-10-15: slim in, oversized/boxy out)
+CLIP_MIN_ROWS = 300      # image model needs this many embedded rated pieces (and 30 likes) before it ranks a user
+CLIP_ON = os.environ.get("CLIP", "1").strip() != "0"   # kill switch
 DRY_RUN = bool(os.environ.get("DRY_RUN", "").strip())   # build + print, write nothing (local verification)
-_KIDS = re.compile(r"\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress|t-?shirt|tee)\b", re.I)
+_KIDS = re.compile(r"\b(?:boys|girls)['’](?=\s)|\bkids?\b|\btoddler\b|\binfant\b|\byouth\b(?= ?(?:size|xs|s|m|l|xl)\b)|\bboys'? (?:size|swim|tee|hoodie|jacket|pants|shorts)\b|\bgirls'? (?:size|swim|dress|t-?shirt|tee)\b", re.I)
 _JKT  = re.compile(r"\b(?:track|coach|bomber|denim|leather|puffer|shirt|work|chore|trucker|varsity|harrington) jackets?\b|\bwindbreaker\b|\banorak\b", re.I)
 MATURE_TAPS = 300        # above this, the user's own fitted weights carry; below, prior + vision carry more
 CLEAR_WEIGHT = 0.5       # a feed clear trains as half a pass (some clears are about size, not style)
@@ -453,6 +459,44 @@ def build_for_user(uid, taste, catalog):
             n_backfill = sum(1 for it in todo_a if it.get("attrs"))
             print(f"  lazy attrs: backfilled {n_backfill} of {len(todo_a)} attr-less pieces in this user's pool")
 
+    # ---- image-similarity ranker (2026-11-13): where a piece has a CLIP fingerprint and the user has
+    # enough embedded history, stage-1 becomes the image model's probability. Everything downstream
+    # (gates, gems, tray, picks, direction nudge, vision on the head) keeps working on that score.
+    n_clip = 0; clip_note = "off"
+    if clip_rank is not None and CLIP_ON:
+        try:
+            lab_urls = {}
+            for t in labeled:
+                u = (t[1] or {}).get("url") or ""
+                if u and not u.startswith("upload:"): lab_urls[u] = (t[0], t[2] if len(t) > 2 else 1.0)
+            live_urls = [it["url"] for it in items if not it["isArchived"] and not it["isLiked"]]
+            want = list(dict.fromkeys(list(lab_urls) + live_urls)); emb = {}
+            for i in range(0, len(want), 100):
+                st_e, part = api("GET", "/rest/v1/clip_emb?select=url,e&url=in.(" + ",".join(urllib.parse.quote(u, safe="") for u in want[i:i+100]) + ")")
+                if st_e == 200 and isinstance(part, list):
+                    for r in part: emb[r["url"]] = r["e"]
+            tr = [u for u in lab_urls if u in emb]
+            npos = sum(1 for u in tr if lab_urls[u][0] == 1)
+            if len(tr) >= CLIP_MIN_ROWS and npos >= 30:
+                np_ = clip_rank.np
+                X = np_.stack([clip_rank.decode(emb[u]) for u in tr])
+                y = np_.array([lab_urls[u][0] for u in tr], dtype=float); wts = np_.array([lab_urls[u][1] for u in tr], dtype=float)
+                beta = clip_rank.fit(X, y, wts)
+                sc_urls = [u for u in live_urls if u in emb]
+                if sc_urls:
+                    probs = clip_rank.predict(beta, np_.stack([clip_rank.decode(emb[u]) for u in sc_urls]))
+                    pm = dict(zip(sc_urls, probs.tolist()))
+                    for it in items:
+                        v = pm.get(it["url"])
+                        if v is not None and not it["isArchived"] and not it["isLiked"]:
+                            it["_s1"] = v; it["score"] = adj(it); n_clip += 1
+                clip_note = f"on ({len(tr)} rated, {npos} likes)"
+            else:
+                clip_note = f"waiting ({len(tr)} rated embedded, {npos} likes)"
+        except Exception as e:
+            clip_note = f"failed: {str(e)[:80]}"
+    print(f"  image model: {clip_note} | {n_clip} live pieces ranked by image")
+
     # gated lane: un-acted items from a gated combo/brand must rank in the user's TOP band to
     # surface (stage-1 percentile — logistic scores aren't on the old 0-1 vision scale). Legacy
     # items without attributes keep the old absolute vision gate. Unrated raw finds never gate.
@@ -490,7 +534,10 @@ def build_for_user(uid, taste, catalog):
             bt = r.get("block_terms") or []
             if bt and re.search(r"\b(?:" + "|".join(re.escape(t) for t in bt) + r")\b", ttl, re.I): return True   # e.g. team kits, even as "collabs"
             if it.get("category") == "footwear": return False
-            if r.get("allow_collabs", True) and (re.search(r"\s[x×]\s", ttl) or "×" in nb or " x " in nb): return False
+            # a collab means a real partner: "Nike × Vintage" / "Nike x Other" are seller tags, not collabs
+            partner = re.sub(r"\b(?:vintage|other|archive|streetwear|designer|japanese brand|made in usa|y2k)\b", "", re.sub(r"\b" + re.escape(k) + r"\b", "", nb)).strip(" ×x&,-")
+            title_x = re.search(r"\s[x×]\s", ttl) and not re.search(r"\b(?:size|sz)\s*[x×]", ttl, re.I)
+            if r.get("allow_collabs", True) and (partner or title_x): return False
             try: st_ = float(taste_model._norm_one((it.get("attrs") or {}).get("statement")) or (it.get("attrs") or {}).get("statement") or 0)
             except Exception: st_ = 0
             era_ = (taste_model._norm_one((it.get("attrs") or {}).get("era")) or "").lower()
@@ -816,7 +863,7 @@ def build_for_user(uid, taste, catalog):
     taste.setdefault("brands", {})["loved"] = loved; taste.setdefault("meta", {})["lastUpdated"] = TODAY
     if not DRY_RUN: api("PATCH", f"/rest/v1/taste?user_id=eq.{uid}", {"payload": taste}, {"Prefer":"return=minimal"})
     print(f"  user {uid[:8]}: {total} to review ({n_tray} in the tray{', ' + str(len(shelf_items)) + ' on the search shelf' if shelf_items else ''}), {n_liked} liked, {n_arch} archived | "
-          f"stage-2 vision on {n_stage2} head items ({n_fresh} fresh) | attrs backfilled {n_backfill} | {n_gated_out} gated out across {len(gated)} combos, "
+          f"stage-2 vision on {n_stage2} head items ({n_fresh} fresh) | attrs backfilled {n_backfill} | image-ranked {n_clip} | {n_gated_out} gated out across {len(gated)} combos, "
           f"deep-gated: {deep_gated} | {n_foreign_out} outside-brand-wall ({n_gems} gems kept) | {n_size_retired} size-retired | {n_dupes} dupes collapsed | {n_family} same-piece hidden | {n_sold} sold hidden | {n_fold_aged} fold-retired | {n_avoided} avoided/brand-rule | {n_steals} steals"
           + (f" | promoted {promoted}" if promoted else ""))
 

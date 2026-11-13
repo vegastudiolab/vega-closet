@@ -89,13 +89,36 @@ jobs:
           FIRECRAWL_KEY:       ${{ secrets.FIRECRAWL_KEY }}
         run: python pipeline/recheck_trr.py
 
+      - name: cache image model weights
+        if: ${{ !cancelled() && github.event.inputs.trr_probe == '' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/pip
+          key: clip-vitb32-laion2b-v1
+
+      - name: image fingerprints (CLIP) for active users' history + pool
+        if: ${{ !cancelled() && github.event.inputs.trr_probe == '' }}
+        continue-on-error: true            # a failed embed never blocks the rebuild; the builder falls back
+        env:
+          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          EMBED_MAX:           '3000'
+        run: |
+          pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -q open_clip_torch pillow numpy
+          python pipeline/embed_images.py
+
       - name: rebuild every user's feed
         if: ${{ !cancelled() && github.event.inputs.trr_probe == '' }}
         env:
           SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python pipeline/build_feed_cloud.py
+        run: |
+          pip install -q numpy
+          python pipeline/build_feed_cloud.py
 
       - name: nucleus admin snapshot        # refresh the admin dashboard after every scan + rebuild
         if: ${{ !cancelled() && github.event.inputs.trr_probe == '' }}
