@@ -573,7 +573,7 @@ def build_for_user(uid, taste, catalog):
         matched = [it for it in items if it["url"] in want and not it["isArchived"] and not it["isLiked"]]
         if len(matched) >= SHELF_MIN:
             for it in matched: it["fromScan"] = True
-            taste.setdefault("meta", {})["shelf"] = {"query": shelf.get("query"), "urls": list(shelf["urls"])[:200], "at": shelf.get("at") or TODAY}
+            taste.setdefault("meta", {})["shelf"] = {"query": shelf.get("query"), "category": shelf.get("category") or "", "id": shelf.get("id") or (shelf.get("at") or TODAY) + ":" + str(shelf.get("query")), "urls": list(shelf["urls"])[:200], "at": shelf.get("at") or TODAY}
         else:
             (taste.get("meta") or {}).pop("shelf", None)           # the user worked through it: the shelf is done
     # thresholds PER CATEGORY (dry run 2026-10-14: one global percentile let the tops score scale
@@ -819,7 +819,11 @@ def build_for_user(uid, taste, catalog):
             "love a piece and it moves to liked; pass it to archived.") % (total, n_liked, n_arch, lead)
     feed = {"date":TODAY,"runId":TODAY+"-cloud","scanned":len(catalog),
             "platforms":{"grailed":plat.get("grailed",0),"therealreal":plat.get("therealreal",0),"ssense":plat.get("ssense",0)},
-            "note":note,"sections":secout}
+            "note":note,"sections":secout,
+            # the app filters to a category scan's category the first time it sees this shelf id,
+            # independent of which page version started the scan
+            "shelf": ({"id": (taste.get("meta") or {}).get("shelf", {}).get("id"), "query": shelf.get("query"),
+                       "category": shelf.get("category") or ""} if shelf_items else None)}
     if DRY_RUN:
         try:
             dump = [{"url": it["url"], "cat": it.get("category"), "brand": it.get("brand"), "title": it.get("title"), "price": it.get("price"),

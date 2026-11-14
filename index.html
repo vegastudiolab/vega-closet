@@ -1661,6 +1661,15 @@
         if (rs.q){ SEARCH_Q = rs.q; searchIn.value = rs.q; searchBox.classList.add("has-text"); }
         if (rs.y && !toShelf) setTimeout(()=>window.scrollTo(0, rs.y), 80);
       }
+      // the feed itself says what the newest shelf was: filter to a category scan's category the first
+      // time this shelf id is seen (works even if the scan was started by an older page or the app was closed)
+      try {
+        const fsh = F.shelf;
+        if (fsh && fsh.id && fsh.category && localStorage.getItem("vegaCloset.seenShelf") !== fsh.id){
+          toShelf = true; shelfCat = fsh.category;
+          localStorage.setItem("vegaCloset.seenShelf", fsh.id);
+        }
+      } catch(e){}
       if (toShelf && shelfCat){
         // a category scan opens filtered to that category: the jackets you asked for, not the whole feed underneath
         VIEW.status = "feed"; VIEW.cat = shelfCat;

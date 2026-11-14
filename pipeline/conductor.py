@@ -869,7 +869,7 @@ def main():
         label = " ".join(x for x in (QUERY, CATEGORY, ("brands: " + override) if override else "") if x).strip()
         try:
             with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scan_result.json"), "w") as fh:
-                json.dump({"user": requester, "query": label, "urls": [r["url"] for r in rows[:inserted]], "at": TODAY}, fh)
+                json.dump({"user": requester, "query": label, "category": CATEGORY or "", "urls": [r["url"] for r in rows[:inserted]], "at": TODAY, "id": f"{TODAY}:{os.environ.get('GITHUB_RUN_ID', 'local')}"}, fh)
             print(f"  results shelf: {inserted} pieces for {label!r}")
         except Exception as e:
             print("  results shelf not written:", e)
