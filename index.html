@@ -1546,7 +1546,16 @@
       cancelBtn.classList.add("show");
       bar.classList.add("on"); fill.style.width="2%";
       const EST = est || 13*60*1000;
-      SCAN_TICK=setInterval(()=>{ fill.style.width=Math.min(90,90*(1-Math.exp(-(Date.now()-t0)/(EST*0.6)))).toFixed(1)+"%"; },800);
+      // the bar is an estimate, not live progress: it eases to ~85% at the estimate, then keeps
+      // creeping toward 98% so a slow night never looks frozen, and names the likely phase
+      const okEl = document.getElementById("sigok");
+      SCAN_TICK=setInterval(()=>{
+        const t=(Date.now()-t0)/EST;
+        const pct = t<1 ? 85*(1-Math.exp(-2.2*t))/(1-Math.exp(-2.2)) : 85+13*(1-Math.exp(-(t-1)*1.5));
+        fill.style.width=Math.min(98,pct).toFixed(1)+"%";
+        if (okEl && !/couldn|didn|stopped/.test(okEl.textContent))
+          okEl.textContent = t<0.45 ? "scanning sources…" : t<0.6 ? "fingerprinting new pieces…" : t<1.15 ? "ranking your feed…" : "almost there — taking a bit longer than usual…";
+      },800);
     }
     function scanDone(finished){
       const bar=document.getElementById("scanbar"), fill=document.getElementById("scanfill");
@@ -1586,9 +1595,10 @@
       // grailed is a fast direct API (~2 min); the realreal/ssense go through a stealth proxy (~10-15).
       // raw scans skip the vision pass on top of that.
       const paid = /therealreal|ssense/.test(src);
-      const est  = paid ? 13*60*1000 : (noVision ? 90*1000 : 2.5*60*1000);
+      // measured 2026-11-14 (style lane + image fingerprints + rebuild): grailed-only ~7.5 min to fresh picks, all three sources ~10
+      const est  = paid ? 10*60*1000 : (noVision ? 4*60*1000 : 7.5*60*1000);
       scanUI(t0, est);
-      ok.textContent=(noVision?"raw-scanning ":"scanning ")+src+(noVision?" — unrated, newest first… (~":" for fresh picks… (~")+(paid?"10-15 min":noVision?"1-2 min":"2-3 min")+")";
+      ok.textContent=(noVision?"raw-scanning ":"scanning ")+src+(noVision?" — unrated, newest first… (~":" for fresh picks… (~")+(paid?"about 10 min":noVision?"about 4 min":"about 7 min")+")";
 
       let before=null;
       try { const {data:f0}=await sb.from('feeds').select('built_at').single(); before=f0&&f0.built_at; } catch(e){}
