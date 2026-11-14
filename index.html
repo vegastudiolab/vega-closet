@@ -1578,7 +1578,7 @@
           const {data:f}=await sb.from('feeds').select('built_at').single();
           if (f && f.built_at && f.built_at!==before){
             // a keyword / category / brand scan comes back as its own shelf on top — land there
-            try { const sc = JSON.parse(localStorage.getItem("vegaCloset.scan")||"null"); if (sc && sc.shelf) sessionStorage.setItem("vegaCloset.shelf","1"); } catch(e){}
+            try { const sc = JSON.parse(localStorage.getItem("vegaCloset.scan")||"null"); if (sc && sc.shelf) sessionStorage.setItem("vegaCloset.shelf", JSON.stringify({ cat: sc.cat || "" })); } catch(e){}
             clearInterval(SCAN_IV); SCAN_IV=null; scanDone(true);
             ok.textContent="fresh picks in — refreshing"; setTimeout(reloadKeepingContext,1400); return;
           }
@@ -1612,7 +1612,7 @@
       if (error){ ok.textContent="couldn't start scan"; scanDone(false); return; }
       if (disp === "cooldown"){ ok.textContent="you've fired a few scans in a row — give it a couple minutes"; scanDone(false); return; }
       // survives the app being closed mid-scan; boot resumes the wait
-      try{ localStorage.setItem("vegaCloset.scan", JSON.stringify({ t0, before, est, shelf: !!(query || brands || (cat && cat!=="all")) })); }catch(e){}
+      try{ localStorage.setItem("vegaCloset.scan", JSON.stringify({ t0, before, est, shelf: !!(query || brands || (cat && cat!=="all")), cat: (cat && cat!=="all") ? cat : "" })); }catch(e){}
 
       // pg_net fires and forgets — confirm GitHub actually accepted the dispatch (204),
       // otherwise a dead token / renamed workflow means we'd poll forever on "started".
@@ -1652,12 +1652,20 @@
     try {
       const rs = JSON.parse(sessionStorage.getItem("vegaCloset.restore")||"null");
       sessionStorage.removeItem("vegaCloset.restore");
-      const toShelf = sessionStorage.getItem("vegaCloset.shelf") === "1";
+      const shelfRaw = sessionStorage.getItem("vegaCloset.shelf");
       sessionStorage.removeItem("vegaCloset.shelf");
+      let toShelf = false, shelfCat = "";
+      if (shelfRaw){ toShelf = true; try { shelfCat = (JSON.parse(shelfRaw) || {}).cat || ""; } catch(e){} }
       if (rs){
         if (rs.view) Object.assign(VIEW, rs.view);
         if (rs.q){ SEARCH_Q = rs.q; searchIn.value = rs.q; searchBox.classList.add("has-text"); }
         if (rs.y && !toShelf) setTimeout(()=>window.scrollTo(0, rs.y), 80);
+      }
+      if (toShelf && shelfCat){
+        // a category scan opens filtered to that category: the jackets you asked for, not the whole feed underneath
+        VIEW.status = "feed"; VIEW.cat = shelfCat;
+        const okc = document.getElementById("sigok");
+        if (okc) okc.textContent = "showing " + shelfCat + " only — set category to all in filters to see everything";
       }
       if (toShelf){
         const sh = document.querySelector('.section[data-key="search"]');
