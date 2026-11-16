@@ -470,14 +470,26 @@ def build_for_user(uid, taste, catalog):
                 u = (t[1] or {}).get("url") or ""
                 if u and not u.startswith("upload:"): lab_urls[u] = (t[0], t[2] if len(t) > 2 else 1.0)
             live_urls = [it["url"] for it in items if not it["isArchived"] and not it["isLiked"]]
-            want = list(dict.fromkeys(list(lab_urls) + live_urls)); emb = {}
-            for i in range(0, len(want), 100):
-                st_e, part = api("GET", "/rest/v1/clip_emb?select=url,e&url=in.(" + ",".join(urllib.parse.quote(u, safe="") for u in want[i:i+100]) + ")")
-                if st_e == 200 and isinstance(part, list):
-                    for r in part: emb[r["url"]] = r["e"]
+            emb = {}
+            def _fetch_emb(urls):            # parallel, 100 per call; only what we will actually use
+                chunks = [urls[i:i+100] for i in range(0, len(urls), 100)]
+                def one(ch):
+                    st_e, part = api("GET", "/rest/v1/clip_emb?select=url,e&url=in.(" + ",".join(urllib.parse.quote(u, safe="") for u in ch) + ")")
+                    return part if st_e == 200 and isinstance(part, list) else []
+                from concurrent.futures import ThreadPoolExecutor as _TPE   # the other import is branch-local
+                with _TPE(max_workers=8) as ex:
+                    for part in ex.map(one, chunks):
+                        for r in part: emb[r["url"]] = r["e"]
+            # 2026-11-16: users below the bar used to pull the WHOLE live pool's fingerprints (up to
+            # ~290 sequential calls) before finding out they had too few likes; that took the nightly
+            # rebuild from ~10 to ~50+ min and timed out Nov 14. Check the bar first, then fetch.
+            n_lab_pos = sum(1 for v in lab_urls.values() if v[0] == 1)
+            if len(lab_urls) >= CLIP_MIN_ROWS and n_lab_pos >= 30:
+                _fetch_emb(list(lab_urls))
             tr = [u for u in lab_urls if u in emb]
             npos = sum(1 for u in tr if lab_urls[u][0] == 1)
             if len(tr) >= CLIP_MIN_ROWS and npos >= 30:
+                _fetch_emb([u for u in live_urls if u not in emb])
                 np_ = clip_rank.np
                 X = np_.stack([clip_rank.decode(emb[u]) for u in tr])
                 y = np_.array([lab_urls[u][0] for u in tr], dtype=float); wts = np_.array([lab_urls[u][1] for u in tr], dtype=float)
